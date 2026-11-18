@@ -46,9 +46,9 @@ shows the download budget, asks for consent, sends one command through
 
 Before a submission:
 
-- build it with an SDK (JDK 17, platform 35) and run it on a device; the code
-  has never been compiled;
-- add real screenshots;
+- ~~build it and run it on a device~~: CI compiles it, and `test/android-e2e.py`
+  runs four instrumentation tests against a real Termux;
+- ~~add screenshots~~: the e2e run captures them from the device;
 - tag the release and point the update check at tags;
 - expect the reviewer to ask why this is an app rather than a script — the
   answer is consent, detection, status, and recovery when Termux blocks
@@ -56,7 +56,8 @@ Before a submission:
   F-Droid.
 
 The app has no `INTERNET` permission. Nothing in it can download anything; the
-installer in Termux does the work, visibly.
+installer in Termux does the work, visibly. The APK also has no library
+dependencies: AndroidX and UI Automator are `androidTest` only.
 
 ## What actually drives adoption
 

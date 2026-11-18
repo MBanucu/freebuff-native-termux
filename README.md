@@ -12,7 +12,7 @@ upstream binary, on the Android kernel, with no proot and no ptrace.
 | `packaging/termux/templates/` | control file, maintainer scripts and launcher, rendered by the builder |
 | `packaging/termux/repo/` | APT repository builder, `freebuff-repo` setup package, Pages index |
 | `tur/freebuff-native/build.sh` | TUR recipe draft, ready to copy into a TUR pull request |
-| `android/` | setup companion app for an F-Droid listing: detects Termux, consents, sends one command (scaffold, not yet built) |
+| `android/` | setup companion app for an F-Droid listing: detects Termux, consents, sends one command; built in CI and tested on a device |
 | `test/installer-test.sh` | the installer test runner; cases live in `test/installer/` |
 | `test/shim-test.sh` | behavioural tests for the shim, with two small C fixtures in `test/shim/` |
 | `test/package-test.sh` | builds a package with a throwaway prefix and inspects its contents |
@@ -102,7 +102,8 @@ bash test/shim-test.sh        # shim: compiles it with the host cc
 bash test/package-test.sh     # .deb: builds and inspects a package, no root
 bash test/repo-test.sh        # apt repo: indexes, Release, signing, freebuff-repo
 bash test/tur-test.sh         # TUR recipe: its install step, in a throwaway prefix
-bash test/android-test.sh     # Android scaffold: manifest, resources, F-Droid metadata
+bash test/android-test.sh     # Android: manifest, resources, F-Droid metadata
+python3 test/android-e2e.py   # Android, on a device: installs and drives the app
 ```
 
 Each installer test builds a throwaway prefix under `mktemp -d` with a stub
