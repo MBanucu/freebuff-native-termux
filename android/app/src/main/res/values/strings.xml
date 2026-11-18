@@ -3,7 +3,6 @@
     <string name="app_name">freebuff-native</string>
     <string name="tagline">Run the Freebuff coding agent natively in Termux — no proot, no second userland.</string>
 
-    <string name="status_checking">Checking Termux…</string>
     <string name="status_termux_installed">Termux is installed.</string>
     <string name="status_termux_missing">Termux is not installed. Install it first; this app only handles setup.</string>
 
@@ -39,7 +38,5 @@ Add that line to ~/.termux/termux.properties inside Termux, then run termux-relo
     <string name="missing_positive">Open F-Droid</string>
     <string name="missing_negative">Close</string>
 
-    <string name="result_title">Termux said</string>
-    <string name="result_empty">No output.</string>
     <string name="dialog_close">Close</string>
 </resources>

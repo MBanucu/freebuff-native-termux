@@ -1,5 +1,6 @@
 package io.github.mbanucu.freebuffnative;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
@@ -25,6 +26,7 @@ import android.widget.TextView;
  * consent, and sends one command to Termux through RUN_COMMAND.  Every state it
  * shows comes from running the installer's own {@code --check} in Termux.
  */
+@SuppressLint("SdCardPath") // the Termux paths are fixed by Termux, not by us
 public final class MainActivity extends Activity implements RunCommandReceiver.Listener {
 
     private static final String TERMUX_PACKAGE = "com.termux";
