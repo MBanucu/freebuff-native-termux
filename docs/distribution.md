@@ -50,8 +50,9 @@ Before a submission:
   runs four instrumentation tests against a real Termux;
 - ~~add screenshots~~: the e2e run captures them from the device;
 - ~~tag the release~~: done, `android-v0.1.0`;
-- submit `fdroiddata/io.github.mbanucu.freebuffnative.yml` and the merge-request
-  text from `fdroiddata/README.md` (F-Droid's repository is on GitLab);
+- submit `fdroiddata/io.github.mbanucu.freebuffnative.yml`: `GL_TOKEN=… python3
+  fdroiddata/submit.py` forks GitLab's fdroiddata, commits the file and opens the
+  merge request (F-Droid's repository is on GitLab, not GitHub);
 - expect the reviewer to ask why this is an app rather than a script — the
   answer is consent, detection, status, and recovery when Termux blocks
   commands, plus the precedent of Nix-on-Droid downloading its runtime outside

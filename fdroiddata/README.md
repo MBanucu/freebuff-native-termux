@@ -6,14 +6,29 @@ It is ready to submit; nothing in this repository has to change first.
 
 ## How to submit
 
-F-Droid's data lives on GitLab (the GitHub repository is a mirror).
+F-Droid's data lives on GitLab (the GitHub repository is a mirror), and nothing
+here has a GitLab token.
+
+One command, if you have a personal access token with the `api` scope
+(GitLab → Settings → Access Tokens):
+
+```bash
+GL_TOKEN=glpat-… python3 fdroiddata/submit.py            # fork, branch, file, MR
+GL_TOKEN=glpat-… python3 fdroiddata/submit.py --rfp      # and a packaging request
+python3 fdroiddata/submit.py --dry-run                   # show the calls first
+```
+
+The script prints the merge request URL. Re-running reuses the fork and reports
+an existing branch, file or MR instead of overwriting.
+
+By hand, if you prefer:
 
 1. Register on GitLab and fork `https://gitlab.com/fdroid/fdroiddata`.
 2. In the fork, add this file as `metadata/io.github.mbanucu.freebuffnative.yml`.
 3. Open a merge request against `fdroid/fdroiddata` with the text below.
 
-First-time contributors are also asked to open a request first, at
-<https://gitlab.com/fdroid/rfp/-/issues>; it is the same file in the body.
+First-time contributors are also asked to open a request at
+<https://gitlab.com/fdroid/rfp/-/issues>; the script's `--rfp` does that.
 
 ## Merge request text
 
