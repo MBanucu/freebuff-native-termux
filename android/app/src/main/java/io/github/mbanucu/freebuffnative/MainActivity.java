@@ -186,7 +186,7 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
 
     private void start(String command, String label, String description, boolean background) {
         if (checkSelfPermission(PERMISSION_RUN_COMMAND) != PackageManager.PERMISSION_GRANTED) {
-            Log.i(TAG, "asking for " + PERMISSION);
+            Log.i(TAG, "asking for " + PERMISSION_RUN_COMMAND);
             // RUN_COMMAND is a dangerous permission owned by Termux; without it
             // startService throws and the reason looks like a settings problem.
             pending = () -> send(command, label, description, background);
