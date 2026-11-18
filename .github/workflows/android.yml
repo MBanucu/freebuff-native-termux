@@ -42,14 +42,16 @@ jobs:
 
       - name: Assemble
         working-directory: android
-        run: gradle --no-daemon --stacktrace assembleDebug
+        run: gradle --no-daemon --stacktrace assembleDebug assembleDebugAndroidTest
 
       - name: Report the apk
         working-directory: android
         run: |
-          apk=app/build/outputs/apk/debug/app-debug.apk
-          ls -l "$apk"
-          echo "sha256 $(sha256sum "$apk" | cut -d' ' -f1)"
+          for apk in app/build/outputs/apk/debug/app-debug.apk \
+                     app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk; do
+            ls -l "$apk"
+            echo "sha256 $(sha256sum "$apk" | cut -d' ' -f1)"
+          done
           aapt2 dump badging "$apk" 2>/dev/null |
             grep -E "^(package|sdkVersion|targetSdkVersion|application-label|uses-permission)" |
             head -10
@@ -58,8 +60,11 @@ jobs:
         if: always()
         with:
           name: freebuff-native-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/**/*.apk
           if-no-files-found: warn
+
+      # The end-to-end test needs a device, so it is not run here; this only
+      # proves the test APK compiles.
 
       # F-Droid runs lint itself; treat ours as advice while the app is young.
       - name: Lint (advisory)

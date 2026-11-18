@@ -142,10 +142,18 @@ check(target is not None and int(target.group(1)) >= 34,
       "targetSdk is current enough for F-Droid",
       None if target is None else target.group(1))
 
-check(not re.search(r"implementation\s*\(", gradle),
+check(not re.search(r"(?<!androidTest)\bimplementation\s*\(", gradle),
       "the app has no library dependencies", "found an implementation() line")
-check(re.search(r"^dependencies\s*\{", gradle, re.MULTILINE) is None,
-      "the build has no dependencies block", "found a dependencies block")
+runtime = [line.strip() for line in gradle.splitlines()
+           if re.match(r"\s*(implementation|api)\s*\(", line)]
+check(not runtime, "nothing is added to the shipped APK", ", ".join(runtime))
+check("androidTestImplementation" in gradle,
+      "the end-to-end test is a test-only dependency")
+check('testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"' in gradle,
+      "the runner is configured for instrumentation")
+check((ANDROID / "app" / "src" / "androidTest" / "java" / "io" / "github" /
+       "mbanucu" / "freebuffnative" / "SetupFlowTest.java").is_file(),
+      "the end-to-end test source exists")
 
 if code is not None:
     changelog = FASTLANE / "changelogs" / (code.group(1) + ".txt")
