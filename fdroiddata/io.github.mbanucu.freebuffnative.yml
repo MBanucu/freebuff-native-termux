@@ -7,7 +7,6 @@ IssueTracker: https://github.com/MBanucu/freebuff-native-termux/issues
 Changelog: https://github.com/MBanucu/freebuff-native-termux/releases
 
 AutoName: freebuff-native
-Summary: Set up Freebuff, natively, in Termux
 Description: |-
   Freebuff is a coding agent for the terminal. It ships as a single executable
   built against glibc, so on Android it normally needs a proot container: a
@@ -46,6 +45,7 @@ Builds:
     subdir: android
     gradle:
       - yes
+    output: app/build/outputs/apk/release/*.apk
 
 MaintainerNotes: |-
   This repository ships two artefacts: the Termux package (tags `v*`, e.g.
@@ -58,6 +58,7 @@ MaintainerNotes: |-
   describes is performed by Termux, not by this app. If a reviewer reads the
   permission list, that is why.
 
+AutoUpdateMode: None
 UpdateCheckMode: None
 CurrentVersion: 0.1.0
 CurrentVersionCode: 1

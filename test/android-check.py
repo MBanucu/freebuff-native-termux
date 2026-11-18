@@ -212,8 +212,22 @@ fdroid = read(ROOT / "fdroiddata" / "io.github.mbanucu.freebuffnative.yml")
 check(fdroid.strip() != "", "the fdroiddata metadata exists")
 for key in ("Categories:", "License: MIT", "SourceCode:", "RepoType: git",
             "Repo: https://github.com/MBanucu/freebuff-native-termux.git",
-            "Builds:", "subdir: android", "UpdateCheckMode:", "MaintainerNotes:"):
+            "Builds:", "subdir: android", "AutoUpdateMode:",
+            "UpdateCheckMode:", "MaintainerNotes:"):
     check(key in fdroid, "the metadata sets " + key.rstrip(":"))
+
+# fdroiddata's tooling moves Summary out of the YAML; an AGP multi-module build
+# needs an explicit output glob.
+check(re.search(r"^Summary:", fdroid, re.MULTILINE) is None,
+      "the summary is not duplicated in the metadata")
+check("output: app/build/outputs/apk/release/*.apk" in fdroid,
+      "the build points at the app module's apk")
+summary = ROOT / "fdroiddata" / "io.github.mbanucu.freebuffnative" / "en-US" / "summary.txt"
+check(summary.is_file(), "the localized summary exists")
+check(summary.is_file()
+      and summary.read_text().strip() == read(FASTLANE / "short_description.txt").strip(),
+      "the localized summary matches the fastlane short description")
+check("gradle:\n      - yes" in fdroid, "the build uses gradle")
 
 if code is not None:
     check("versionCode: " + code.group(1) in fdroid,
