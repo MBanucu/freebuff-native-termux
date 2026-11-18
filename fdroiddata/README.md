@@ -55,6 +55,12 @@ publishes a Termux package with its own `v*` tags; the maintainer notes explain
 this.
 ```
 
+## State
+
+The merge request is open and everything passes: `git redirect`, `checkupdates`,
+`fdroid lint`, `fdroid rewritemeta`, `tools check scripts`, `schema validation`,
+`check source code`, `fdroid build`, `check apk`. It waits on review.
+
 ## What fdroiddata's CI insists on
 
 The metadata jobs are stricter than `fdroid lint`, and each failure is a rule:
