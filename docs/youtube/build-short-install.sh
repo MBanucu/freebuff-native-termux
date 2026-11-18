@@ -56,8 +56,8 @@ ffmpeg -hide_banner -y \
 
     [a]trim=start=$APP_IN:end=$APP_OUT,setpts=PTS-STARTPTS,fps=30,$APP,$(cap 'nothing installed yet')[s1];
     [b]trim=start=$DIALOG_IN:end=$DIALOG_OUT,setpts=PTS-STARTPTS,fps=30,$APP,$(cap 'one dialog, real numbers')[s2];
-    [c]trim=start=$INSTALL_IN:end=$INSTALL_SPLIT,setpts=(PTS-STARTPTS)/$FAST_SPEED,fps=30,$TERM,$(cap 'package  →  136 MB' 0x3ddc84)[s3];
-    [d]trim=start=$INSTALL_SPLIT:end=$INSTALL_OUT,setpts=(PTS-STARTPTS)/$SLOW_SPEED,fps=30,$TERM,$(cap '136 MB  →  checksum  →  wrapper' 0x3ddc84)[s4];
+    [c]trim=start=$INSTALL_IN:end=$INSTALL_SPLIT,setpts=(PTS-STARTPTS)/$FAST_SPEED,fps=30,$TERM,$(cap 'package  ·  136 MB' 0x3ddc84)[s3];
+    [d]trim=start=$INSTALL_SPLIT:end=$INSTALL_OUT,setpts=(PTS-STARTPTS)/$SLOW_SPEED,fps=30,$TERM,$(cap '136 MB  ·  checksum  ·  wrapper' 0x3ddc84)[s4];
     [e]trim=start=$REP_IN:end=$REP_OUT,setpts=PTS-STARTPTS,fps=30,$APP,$(cap 'then it checks itself' 0x3ddc84)[s5];
 
     [2:v]drawtext=fontfile=$FONT:text='pkg install freebuff-native':fontcolor=0x3ddc84:fontsize=58:x=(w-text_w)/2:y=760,

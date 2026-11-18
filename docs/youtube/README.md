@@ -5,9 +5,10 @@ Two cuts, both from real device footage (no mockups):
 | file | length | what it shows |
 | --- | --- | --- |
 | `freebuff-native-install-short.mp4` | 26 s | uninstalled → consent dialog → package + real 136 MB download → checksum, shim, wrapper → check report |
+| `freebuff-native-usage-short.mp4` | 23 s | freebuff writing and running a Python script on the phone |
 | `freebuff-native-short.mp4` | 14 s | the check report only; shorter hook |
 
-Publish the install cut first: the download is the part people do not believe.
+Publish the install cut first (the download is the part people do not believe), then the usage cut as proof that it works.
 
 ## Title
 
@@ -83,6 +84,21 @@ Two caveats worth keeping in mind:
 - The recorder must look in `$PREFIX/tmp/freebuff-native`, not `$TMPDIR`: the
   installer runs under Termux's RUN_COMMAND service, which has its own `TMPDIR`.
 
+## Beats, usage cut
+
+| time | screen | caption |
+| --- | --- | --- |
+| 0.0–2.2 | title | Freebuff on Termux / one real task, on the phone |
+| 2.2–4.6 | freebuff banner | the same binary, natively |
+| 4.6–7.0 | the task appears | ask for a file |
+| 7.0–19.6 | thinking, file created, run, answer | it writes · runs · checks |
+| 19.6–21.6 | the finished answer | done · exit 0 |
+| 21.6–23.5 | end card | `pkg install freebuff-native` |
+
+The task is real: freebuff creates `fib.py`, runs `python3 fib.py`, and reports
+`exit code 0` with the first ten Fibonacci numbers. The keyboard is dismissed
+before recording, so the TUI fills the frame.
+
 ## Beats, check cut
 
 | time | screen | caption |
@@ -120,7 +136,11 @@ TIMELINE=timeline.env bash docs/youtube/build-short-install.sh install.mp4 \
     docs/youtube/freebuff-native-install-short.mp4
 ```
 
-Cut points are variables at the top of both build scripts; a re-record normally
+The usage cut is recorded from a Termux session running `freebuff`: open a new
+session, start freebuff, hide the keyboard (BACK), then record, type the task
+through `adb shell input text`, and stop after the answer settles.
+
+Cut points are variables at the top of every build script; a re-record normally
 only needs new timings. The recording is 720x1600; the scripts scale it to fit the
 1080x1920 canvas, and the terminal segments are cropped full-bleed because text
 needs the width.
