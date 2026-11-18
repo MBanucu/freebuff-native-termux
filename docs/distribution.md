@@ -9,7 +9,7 @@ why "get it on F-Droid" cannot mean "get the .deb on F-Droid".
 | Signed APT repository (GitHub Pages) | `pkg install freebuff-repo && pkg install freebuff-native` | live, both architectures, updates through `pkg` |
 | Release debs | `pkg install ./freebuff-native_<version>_<arch>.deb` | live on `v1.1.0` |
 | TUR | `pkg install freebuff-native` after `tur-repo` | recipe draft in `tur/`, request open at termux-user-repository/tur#3109 |
-| F-Droid | install an app, then set up Termux | app built, tested on a device, tagged `android-v0.1.0`; metadata ready in `fdroiddata/`, merge request pending |
+| F-Droid | install an app, then set up Termux | app built, tested on a device, tagged `android-v0.1.0`; merge request open at fdroid/fdroiddata!58019 |
 | Upstream docs | a Termux line in freebuff's docs | comment on CodebuffAI/freebuff#1688; no PR yet |
 
 ## APT repository
@@ -50,9 +50,9 @@ Before a submission:
   runs four instrumentation tests against a real Termux;
 - ~~add screenshots~~: the e2e run captures them from the device;
 - ~~tag the release~~: done, `android-v0.1.0`;
-- submit `fdroiddata/io.github.mbanucu.freebuffnative.yml`: `GL_TOKEN=… python3
-  fdroiddata/submit.py` forks GitLab's fdroiddata, commits the file and opens the
-  merge request (F-Droid's repository is on GitLab, not GitHub);
+- ~~submit~~: the merge request is open at
+  <https://gitlab.com/fdroid/fdroiddata/-/merge_requests/58019>; later updates
+  bump the metadata and add a build entry per `android-v*` tag;
 - expect the reviewer to ask why this is an app rather than a script — the
   answer is consent, detection, status, and recovery when Termux blocks
   commands, plus the precedent of Nix-on-Droid downloading its runtime outside

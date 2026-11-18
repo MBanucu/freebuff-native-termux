@@ -18,6 +18,9 @@ merge request that already exists instead of overwriting it.
 import argparse
 import json
 import os
+import re
+import shutil
+import subprocess
 import sys
 import time
 import urllib.error
@@ -40,6 +43,13 @@ class GitLab:
     def __init__(self, token, dry_run=False):
         self.token = token
         self.dry_run = dry_run
+
+    def try_call(self, method, path, payload=None, ok=(200, 201)):
+        """Like call(), but returns the error instead of exiting."""
+        try:
+            return 200, self.call(method, path, payload, ok=ok)
+        except SystemExit as stop:
+            return 0, {"error": str(stop)}
 
     def call(self, method, path, payload=None, ok=(200, 201)):
         if self.dry_run and method != "GET":
@@ -92,7 +102,8 @@ def main():
 
     print("fork")
     fork = gl.call("POST", "/projects/%s/fork" % project(UPSTREAM),
-                   {"name": "fdroiddata", "path": "fdroiddata"}, ok=(200, 201, 400))
+                   {"name": "fdroiddata", "path": "fdroiddata"},
+                   ok=(200, 201, 400, 409))
     fork_id = fork.get("id")
     if not fork_id and not args.dry_run:
         target = gl.call("GET", "/projects/%s" % project(username + "/fdroiddata"))
@@ -100,19 +111,26 @@ def main():
     if not fork_id and not args.dry_run:
         raise SystemExit("could not find or create the fork")
 
+    # fdroiddata's default branch is master today, but read it rather than
+    # assume it: the fork also has to be ready, and that takes a while.
+    base = "master"
     if not args.dry_run:
+        info = gl.call("GET", "/projects/%s" % fork_id)
+        base = info.get("default_branch") or base
         for _ in range(30):
-            branch = gl.call("GET", "/projects/%s/repository/branches/master" % fork_id,
-                             ok=(200, 404))
-            if branch.get("name") == "master":
+            branch = gl.call(
+                "GET", "/projects/%s/repository/branches/%s" % (fork_id, base),
+                ok=(200, 404))
+            if branch.get("name") == base:
                 break
             time.sleep(2)
         else:
-            raise SystemExit("the fork has no master branch yet; try again in a minute")
+            raise SystemExit("the fork has no %s branch yet; try again in a minute" % base)
+    print("base     " + base)
 
     print("branch   " + BRANCH)
     gl.call("POST", "/projects/%s/repository/branches" % fork_id,
-            {"branch": BRANCH, "ref": "master"}, ok=(201, 400))
+            {"branch": BRANCH, "ref": base}, ok=(201, 400))
 
     print("file     " + FILE)
     gl.call("POST", "/projects/%s/repository/files/%s" % (fork_id, project(FILE)),
@@ -120,14 +138,40 @@ def main():
              "commit_message": "New app: freebuff-native"}, ok=(201, 400))
 
     print("merge request")
-    mr = gl.call("POST", "/projects/%s/merge_requests" % fork_id,
-                 {"source_branch": BRANCH, "target_branch": "master",
-                  "title": TITLE, "description": description,
-                  "remove_source_branch": True}, ok=(201, 409))
+    # A merge request from a fork has to be created on the upstream project and
+    # must name the fork, otherwise GitLab opens it inside the fork instead.
+    if args.dry_run:
+        upstream_id = 0
+    else:
+        upstream = gl.call("GET", "/projects/%s" % project(UPSTREAM))
+        upstream_id = upstream.get("id", 0)
+    status, mr = gl.try_call(
+        "POST", "/projects/%s/merge_requests" % upstream_id,
+        {"source_project_id": fork_id, "source_branch": BRANCH,
+         "target_branch": base, "title": TITLE, "description": description})
+
+    if not mr.get("web_url") and shutil.which("glab"):
+        # Some accounts get a 403 from the REST endpoint while glab's own client
+        # succeeds, so fall back to the CLI rather than guess at the reason.
+        print("  REST refused, trying glab")
+        command = ["glab", "mr", "create", "-R", UPSTREAM,
+                   "-H", username + "/fdroiddata", "-s", BRANCH, "-b", base,
+                   "-t", TITLE, "-d", description, "--yes", "--no-editor"]
+        if args.dry_run:
+            print("  would run " + " ".join(command))
+        else:
+            done = subprocess.run(command, capture_output=True, text=True, check=False)
+            found = re.search(r"https://gitlab\.com/\S+/merge_requests/\d+", done.stdout)
+            if found:
+                mr = {"web_url": found.group(0)}
+            else:
+                print(done.stdout.strip()[-400:])
+                print(done.stderr.strip()[-400:])
+
     if mr.get("web_url"):
         print("\nmerge request: " + mr["web_url"])
     else:
-        print("\nthe merge request may already exist; open it in the GitLab UI")
+        print("\nno merge request created; open the fork in the GitLab UI")
 
     if args.rfp:
         print("\nrequest for packaging")
