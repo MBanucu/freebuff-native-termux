@@ -170,6 +170,13 @@ def main():
 
     if mr.get("web_url"):
         print("\nmerge request: " + mr["web_url"])
+        # A pipeline created through the API is not attached to the merge
+        # request, so start one from the merge request itself.
+        iid = re.search(r"/merge_requests/(\d+)", mr["web_url"])
+        if iid and not args.dry_run:
+            gl.try_call("POST", "/projects/%s/merge_requests/%s/pipelines"
+                        % (upstream_id, iid.group(1)))
+            print("  started the merge request pipeline")
     else:
         print("\nno merge request created; open the fork in the GitLab UI")
 

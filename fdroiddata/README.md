@@ -55,6 +55,18 @@ publishes a Termux package with its own `v*` tags; the maintainer notes explain
 this.
 ```
 
+## After the merge request is open
+
+The metadata jobs (`test YAML 1.2`, `test strip EXIF`, `test weblate merge
+conflict`) run on the fork. A pipeline started through the API is not attached to
+the merge request, so start one from the request itself:
+
+```bash
+glab api -X POST /projects/fdroid%2Ffdroiddata/merge_requests/<iid>/pipelines
+```
+
+`submit.py` does that for you.
+
 ## After it is merged
 
 - `fdroid build io.github.mbanucu.freebuffnative:1` reproduces the build locally.
