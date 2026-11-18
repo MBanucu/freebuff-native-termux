@@ -34,6 +34,8 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
     private static final String RUN_COMMAND_ACTION = "com.termux.RUN_COMMAND";
     private static final String TERMUX_BASH = "/data/data/com.termux/files/usr/bin/bash";
     private static final String TERMUX_HOME = "/data/data/com.termux/files/home";
+    private static final String PERMISSION_RUN_COMMAND = "com.termux.permission.RUN_COMMAND";
+    private static final int REQUEST_RUN_COMMAND = 1;
 
     private static final String CHECK_COMMAND = "freebuff-native --check";
 
@@ -48,6 +50,7 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
 
     private TextView status;
     private TextView output;
+    private Runnable pending;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -117,6 +120,7 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        scroll.setFitsSystemWindows(true);
         scroll.addView(column, new ScrollView.LayoutParams(
                 ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT));
         return scroll;
@@ -155,7 +159,7 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
                 .setMessage(R.string.consent_message)
                 .setNegativeButton(R.string.consent_cancel, null)
                 .setPositiveButton(R.string.consent_accept,
-                        (dialog, which) -> run(SETUP_COMMAND,
+                        (dialog, which) -> start(SETUP_COMMAND,
                                 "Set up freebuff-native",
                                 "Download and install freebuff-native"))
                 .show();
@@ -165,7 +169,7 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
         if (!requireTermux()) {
             return;
         }
-        run(CHECK_COMMAND, "Check freebuff-native", "Report the state of the install");
+        start(CHECK_COMMAND, "Check freebuff-native", "Report the state of the install");
     }
 
     private void openTermux() {
@@ -177,8 +181,33 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
         }
     }
 
-    private void run(String command, String label, String description) {
-        PendingIntent pending = PendingIntent.getBroadcast(this, 0,
+    private void start(String command, String label, String description) {
+        if (checkSelfPermission(PERMISSION_RUN_COMMAND) != PackageManager.PERMISSION_GRANTED) {
+            // RUN_COMMAND is a dangerous permission owned by Termux; without it
+            // startService throws and the reason looks like a settings problem.
+            pending = () -> send(command, label, description);
+            requestPermissions(new String[] {PERMISSION_RUN_COMMAND}, REQUEST_RUN_COMMAND);
+            return;
+        }
+        send(command, label, description);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+        if (request != REQUEST_RUN_COMMAND) {
+            return;
+        }
+        Runnable next = pending;
+        pending = null;
+        if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED && next != null) {
+            next.run();
+        } else {
+            showDeniedHelp();
+        }
+    }
+
+    private void send(String command, String label, String description) {
+        PendingIntent result = PendingIntent.getBroadcast(this, 0,
                 new Intent(RunCommandReceiver.ACTION_RESULT).setPackage(getPackageName()),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
 
@@ -192,7 +221,7 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
         intent.putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "0");
         intent.putExtra("com.termux.RUN_COMMAND_COMMAND_LABEL", label);
         intent.putExtra("com.termux.RUN_COMMAND_COMMAND_DESCRIPTION", description);
-        intent.putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pending);
+        intent.putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", result);
 
         try {
             startService(intent);
@@ -249,6 +278,18 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
                 .setMessage(getString(R.string.permission_message)
                         + "\n\n" + ALLOW_EXTERNAL_APPS)
                 .setPositiveButton(R.string.dialog_close, null)
+                .show();
+    }
+
+    private void showDeniedHelp() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.permission_denied_title)
+                .setMessage(R.string.permission_denied_message)
+                .setNegativeButton(R.string.dialog_close, null)
+                .setPositiveButton(R.string.permission_settings,
+                        (dialog, which) -> startActivity(new Intent(
+                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:" + getPackageName()))))
                 .show();
     }
 

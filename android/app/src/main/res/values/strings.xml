@@ -10,7 +10,7 @@
     <string name="action_install">Set up freebuff-native</string>
     <string name="action_open">Open Termux</string>
 
-    <string name="hint">Setup runs in Termux, where you can watch it. The command is shown before anything runs.
+    <string name="hint">Setup runs in Termux, where you can watch it; the command is in the confirmation dialog first.
 
 You may need Termux\'s \"allow external apps\" setting for this app to send commands: add allow-external-apps=true to ~/.termux/termux.properties.</string>
 
@@ -20,6 +20,10 @@ You may need Termux\'s \"allow external apps\" setting for this app to send comm
 • the freebuff-native package (~30 KB) from a signed APT repository,
 • the glibc runtime it needs (~400 MB installed, glibc packages from the termux-glibc repository),
 • the official Freebuff release (~136 MB) from GitHub, verified against the sha256 published with it.
+
+The command, run in Termux:
+
+curl -fsSL https://mbanucu.github.io/freebuff-native-termux/install.sh | bash &amp;&amp; pkg install -y freebuff-native &amp;&amp; freebuff-native --download
 
 Nothing is uploaded. Use Wi-Fi if mobile data is metered. You can cancel now and run the same steps by hand later.</string>
     <string name="consent_accept">Start setup</string>
@@ -31,6 +35,10 @@ Nothing is uploaded. Use Wi-Fi if mobile data is metered. You can cancel now and
   allow-external-apps=true
 
 Add that line to ~/.termux/termux.properties inside Termux, then run termux-reload-settings (or restart Termux), and try again. The command is copied to the clipboard for you.</string>
+
+    <string name="permission_denied_title">Permission needed</string>
+    <string name="permission_denied_message">This app hands exactly one command to Termux, and Termux only accepts it with its RUN_COMMAND permission granted. Android asked for it and the request was declined.</string>
+    <string name="permission_settings">Open settings</string>
 
     <string name="missing_title">Termux is required</string>
     <string name="missing_message">This app does not install Freebuff by itself: it starts the setup in Termux. Install Termux from F-Droid, then come back.</string>
