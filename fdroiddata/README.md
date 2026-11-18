@@ -55,6 +55,17 @@ publishes a Termux package with its own `v*` tags; the maintainer notes explain
 this.
 ```
 
+## What fdroiddata's CI insists on
+
+The metadata jobs are stricter than `fdroid lint`, and each failure is a rule:
+
+- `AutoUpdateMode` must be present, even when it is `None`.
+- The summary is not allowed in the YAML: it belongs in
+  `metadata/<appid>/en-US/summary.txt`. `make-summary-translatable.py` performs
+  that migration and fails on purpose so you commit the result.
+- Gradle output discovery looks under `<subdir>/build/outputs/apk`, which an AGP
+  multi-module project never writes to; `output:` has to name `app/build/...`.
+
 ## After the merge request is open
 
 The metadata jobs (`test YAML 1.2`, `test strip EXIF`, `test weblate merge
