@@ -4,11 +4,12 @@ Two cuts, both from real device footage (no mockups):
 
 | file | length | what it shows |
 | --- | --- | --- |
+| `freebuff-native-full-short.mp4` | 41 s | the whole thing: app consent → terminal install with the real download → freebuff writing and running a script |
 | `freebuff-native-install-short.mp4` | 26 s | uninstalled → consent dialog → package + real 136 MB download → checksum, shim, wrapper → check report |
 | `freebuff-native-usage-short.mp4` | 23 s | freebuff writing and running a Python script on the phone |
 | `freebuff-native-short.mp4` | 14 s | the check report only; shorter hook |
 
-Publish the install cut first (the download is the part people do not believe), then the usage cut as proof that it works.
+The full cut is the one to publish: it carries the install and the proof in one video. The install and usage cuts work as shorter, focused posts.
 
 ## Title
 
@@ -44,6 +45,24 @@ The setup app is in review for F-Droid: fdroid/fdroiddata!58019
 
 #Termux #Android #Freebuff #CodingAgent #Linux #FOSS
 ```
+
+## Beats, full cut
+
+| time | screen | caption |
+| --- | --- | --- |
+| 0.0–2.2 | title | Freebuff on Termux / install it · then use it |
+| 2.2–4.4 | app, nothing installed | nothing installed yet |
+| 4.4–7.4 | consent dialog | the app asks · then sends one command |
+| 7.4–14.3 | package + download, 5× | package · 136 MB download |
+| 14.3–19.1 | checksum, shim, wrapper, 1× | checksum · shim · wrapper |
+| 19.1–21.5 | freebuff banner | now · one real task |
+| 21.5–34.8 | thinking, file, run, answer | it writes · runs · checks |
+| 34.8–36.8 | finished answer | done · exit 0 |
+| 36.8–40.6 | end card | `pkg install freebuff-native` |
+
+Note what "installing via the app" means here: the app does not run the
+installer itself, it hands one command to Termux, and the video shows both
+sides of that hand-off.
 
 ## Beats, install cut
 
