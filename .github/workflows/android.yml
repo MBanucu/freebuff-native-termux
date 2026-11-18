@@ -27,12 +27,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Platform and build tools
+      - name: Android SDK
         run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-          sdkmanager --list_installed | sed -n '1,20p'
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          manager=$(command -v sdkmanager || echo "$sdk/cmdline-tools/latest/bin/sdkmanager")
+          yes | "$manager" --licenses >/dev/null 2>&1 || true
+          "$manager" "platforms;android-35" "build-tools;35.0.0" "platform-tools" >/dev/null
+          "$manager" --list_installed | sed -n '1,15p'
+          echo "sdk=$sdk" >>"$GITHUB_ENV"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
