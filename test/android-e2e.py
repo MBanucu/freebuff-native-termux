@@ -18,10 +18,11 @@ Exit codes: 0 pass, 1 failure, 77 skip (no adb, no device, no Termux).
 """
 
 import argparse
+import queue
 import re
-import select
 import subprocess
 import sys
+import threading
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -43,9 +44,13 @@ def say(message):
     print(message, flush=True)
 
 
-def step(message, started=None):
-    suffix = "" if started is None else "  (%.1fs)" % (time.monotonic() - started)
-    say("\n# " + message + suffix)
+_last_step = [time.monotonic()]
+
+
+def step(message):
+    now = time.monotonic()
+    say("\n# %s  (+%.1fs)" % (message, now - _last_step[0]))
+    _last_step[0] = now
 
 
 def check(condition, message, detail=""):
@@ -57,13 +62,24 @@ def check(condition, message, detail=""):
 
 
 class LogWatch:
-    """A logcat stream, so waiting for the app is a blocking read, not a poll."""
+    """A logcat stream, so waiting for the app is a blocking read, not a poll.
+
+    A reader thread feeds a queue: select() on the pipe is unreliable once a
+    text-mode reader has buffered part of a line.
+    """
 
     def __init__(self, serial):
         command = ["adb"] + (["-s", serial] if serial else [])
         command += ["logcat", "-T", "1", "-v", "brief", "-s", LOG_TAG + ":I"]
         self.process = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        self.lines = queue.Queue()
+        self.reader = threading.Thread(target=self._pump, daemon=True)
+        self.reader.start()
+
+    def _pump(self):
+        for line in self.process.stdout:
+            self.lines.put(line)
 
     def wait(self, pattern, timeout):
         deadline = time.monotonic() + timeout
@@ -71,11 +87,9 @@ class LogWatch:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return None
-            ready, _, _ = select.select([self.process.stdout], [], [], remaining)
-            if not ready:
-                return None
-            line = self.process.stdout.readline()
-            if not line:
+            try:
+                line = self.lines.get(timeout=remaining)
+            except queue.Empty:
                 return None
             if re.search(pattern, line):
                 return line.strip()
@@ -111,7 +125,7 @@ class Device:
         return LogWatch(self.serial)
 
     def ui(self):
-        self.shell("uiautomator dump " + REMOTE_UI + " >/dev/null 2>&1")
+        self.shell("uiautomator dump --compressed " + REMOTE_UI + " >/dev/null 2>&1")
         xml = self.shell("cat " + REMOTE_UI)
         xml = xml[xml.find("<?xml"):]
         return ET.fromstring(xml) if xml.strip() else None
@@ -140,6 +154,14 @@ class Device:
             if time.monotonic() >= deadline:
                 return None
 
+    def wait_text_gone(self, needle, timeout=10):
+        deadline = time.monotonic() + timeout
+        while True:
+            if needle not in self.texts():
+                return True
+            if time.monotonic() >= deadline:
+                return False
+
     def wait_focus(self, needle, timeout=15):
         """Cheap window check; dumpsys is ~50 ms, so polling it is cheap."""
         deadline = time.monotonic() + timeout
@@ -149,7 +171,6 @@ class Device:
                 return True
             if time.monotonic() >= deadline:
                 return False
-            select.select([], [], [], 0.05)  # yield, don't sleep on a fixed timer
 
     def wait_activity(self, needle, timeout=15):
         deadline = time.monotonic() + timeout
@@ -159,7 +180,6 @@ class Device:
                 return True
             if time.monotonic() >= deadline:
                 return False
-            select.select([], [], [], 0.05)
 
     def tap(self, label):
         node = self.find(label)
@@ -222,10 +242,16 @@ def main():
             raise Skip("Termux is not installed on this device")
         say("  Termux is installed")
 
-        # A fresh install every run: each CI build carries a new debug signature.
         step("install")
-        device.shell("pm uninstall " + PACKAGE)
-        out = device.adb("install", str(apk))
+        try:
+            out = device.adb("install", "-r", str(apk))
+        except RuntimeError as error:
+            # Each CI build carries a new debug signature, so an update of a
+            # build from another run is rejected; start clean in that case.
+            if "INSTALL_FAILED_UPDATE_INCOMPATIBLE" not in str(error):
+                raise
+            device.shell("pm uninstall " + PACKAGE)
+            out = device.adb("install", str(apk))
         check("Success" in out, "the apk installs", out.strip()[-200:])
         device.shell("pm grant %s %s" % (PACKAGE, PERMISSION))
         grants = device.shell("dumpsys package %s | grep -A1 'runtime permissions'" % PACKAGE)
@@ -256,26 +282,27 @@ def main():
                   "the dialog states the download sizes")
         device.screenshot("02-consent.png")
         device.tap("CANCEL")
-        check(device.wait_text("Download about 540 MB?", timeout=5) is None,
+        check(device.wait_text_gone("Download about 540 MB?", timeout=10),
               "cancel closes the dialog")
 
         step("check setup: RUN_COMMAND through Termux")
         watch = device.logcat()
         try:
             device.tap("Check setup")
-            sent = watch.wait(r"sent app-shell: Check setup", timeout=15)
+            sent = watch.wait(r"sent app-shell: Check freebuff-native", timeout=15)
             check(sent is not None, "the app sends the check as an app-shell command",
                   "" if sent else "no log line")
             result = watch.wait(r"result: ", timeout=120) if sent else None
             check(result is not None, "Termux returns the result to the app",
                   "" if result else "no result event")
+            check(result is not None and "exit code 0" in result,
+                  "the check exited 0", result[-200:] if result else "")
+            check(result is not None and "spawn shim present" in result,
+                  "the report names the shim")
             check(device.wait_focus(PACKAGE, timeout=5),
                   "a background check does not leave the app")
-            device.wait_text("native install complete", timeout=10)
-            screen = "\n".join(device.texts())
-            check("native install complete" in screen, "the app shows the check output")
-            check("exit code 0" in screen, "the check exited 0", screen[-200:])
-            check("spawn shim present" in screen, "the report names the shim")
+            check(device.wait_text("freebuff native installer", timeout=10) is not None,
+                  "the app shows the check output")
             device.screenshot("03-check.png")
         finally:
             watch.close()
@@ -296,7 +323,12 @@ def main():
         finally:
             watch.close()
         device.shell("input keyevent BACK")
+        check(device.wait_text("Permission needed", timeout=10) is not None,
+              "a denied permission is explained in the app")
+        device.tap("CLOSE")
         device.shell("pm grant %s %s" % (PACKAGE, PERMISSION))
+        device.wait_focus(PACKAGE, timeout=10)
+        device.wait_text("Check setup", timeout=10)
         watch = device.logcat()
         try:
             device.tap("Check setup")
@@ -312,7 +344,8 @@ def main():
         say("\nFAIL: " + str(error))
         return 1
 
-    step("done in %.1fs" % (time.monotonic() - started))
+    step("done")
+    say("  total %.1fs" % (time.monotonic() - started))
     if failures:
         say("%d failure(s)" % len(failures))
         return 1

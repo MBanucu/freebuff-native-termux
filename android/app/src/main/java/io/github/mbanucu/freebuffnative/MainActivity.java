@@ -246,7 +246,7 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
 
     @Override
     public void onCommandResult(String text) {
-        Log.i(TAG, "result: " + text.split("\n")[0]);
+        Log.i(TAG, "result: " + text.replace("\n", " | "));
         output.setText(text);
         output.setVisibility(View.VISIBLE);
         refresh();
