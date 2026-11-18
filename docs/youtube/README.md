@@ -4,7 +4,7 @@ Two cuts, both from real device footage (no mockups):
 
 | file | length | what it shows |
 | --- | --- | --- |
-| `freebuff-native-install-short.mp4` | 22 s | uninstalled → consent dialog → the real 136 MB download → check report |
+| `freebuff-native-install-short.mp4` | 26 s | uninstalled → consent dialog → package + real 136 MB download → checksum, shim, wrapper → check report |
 | `freebuff-native-short.mp4` | 14 s | the check report only; shorter hook |
 
 Publish the install cut first: the download is the part people do not believe.
@@ -49,16 +49,39 @@ The setup app is in review for F-Droid: fdroid/fdroiddata!58019
 | time | screen | caption |
 | --- | --- | --- |
 | 0.0–2.2 | title | Freebuff on Termux / installing it, on camera |
-| 2.2–4.0 | app, nothing installed | nothing installed yet |
-| 4.0–6.4 | consent dialog | one dialog, real numbers |
-| 6.4–9.0 | `pkg install` in Termux | one command to Termux |
-| 9.0–13.0 | download, 9x | 136 MB, sha256 checked |
-| 13.0–15.0 | end of install | no proot, no compiler |
-| 15.0–18.2 | check report | then it checks itself |
-| 18.2–22.0 | end card | `pkg install freebuff-native` |
+| 2.2–4.4 | app, nothing installed | nothing installed yet |
+| 4.4–7.3 | consent dialog | one dialog, real numbers |
+| 7.3–14.3 | `pkg` + download, 5× | package → 136 MB |
+| 14.3–19.1 | checksum, install, shim, wrapper, 1× | 136 MB → checksum → wrapper |
+| 19.1–22.9 | check report | then it checks itself |
+| 22.9–26.4 | end card | `pkg install freebuff-native` |
 
-The download is compressed 9x rather than trimmed: the percentage counter still
-moves, which reads as "this is doing work" instead of a loading bar that jumps.
+The install is one continuous interval: nothing is dropped between the keyboard
+going away and the wrapper landing. The first part is fast-forwarded 5×, the last
+five seconds play at normal speed so `checksum verified`, `freebuff 0.2.36
+installed`, `spawn shim installed` and `wrapper installed` can be read.
+
+## How the timings are measured
+
+Not by sampling frames. `record-install.sh` writes a marker with the device clock
+for every action (launch, taps, check) and for every filesystem milestone the
+installer reaches: the release archive appearing in `$PREFIX/tmp/freebuff-native`,
+the extracted binary appearing in `~/.config/manicode`, `$PREFIX/bin/freebuff`
+being written, and `freebuff --version` working.
+
+`sync.py` converts those epochs to video time. The encoder starts slightly after
+`record_start`, so one visual event calibrates the difference — the screen change
+from Termux to the app, whose request time is known — and every marker is shifted
+by that offset. The result is written to `timeline.env` (committed from the take
+above), and `build-short-install.sh` reads it, so the cuts land on the events.
+
+Two caveats worth keeping in mind:
+
+- Markers are taken after the command returns, so they lag the visible change by
+  the command's own latency. `am start -W` waits for the first frame, which puts
+  the launch anchor ~0.4 s late; the cuts keep 0.3–0.5 s of margin because of it.
+- The recorder must look in `$PREFIX/tmp/freebuff-native`, not `$TMPDIR`: the
+  installer runs under Termux's RUN_COMMAND service, which has its own `TMPDIR`.
 
 ## Beats, check cut
 
@@ -88,12 +111,13 @@ The recordings are not committed. To reproduce the install cut:
 pkg uninstall -y freebuff-native
 rm -rf "$PREFIX/tmp/freebuff-native" ~/.config/manicode/freebuff
 
-# record: main screen -> consent -> setup -> check
-adb shell screenrecord --size 720x1600 --bit-rate 6000000 --time-limit 175 /sdcard/install.mp4 &
-# (drive the app; script used here: record-install.sh in the session temp dir)
-adb shell pkill -INT screenrecord
+# record with markers
+bash docs/youtube/record-install.sh install.mp4 markers.txt
 
-bash docs/youtube/build-short-install.sh install.mp4 docs/youtube/freebuff-native-install-short.mp4
+# turn the markers into cut points, then compose
+python3 docs/youtube/sync.py install.mp4 markers.txt timeline.env
+TIMELINE=timeline.env bash docs/youtube/build-short-install.sh install.mp4 \
+    docs/youtube/freebuff-native-install-short.mp4
 ```
 
 Cut points are variables at the top of both build scripts; a re-record normally
