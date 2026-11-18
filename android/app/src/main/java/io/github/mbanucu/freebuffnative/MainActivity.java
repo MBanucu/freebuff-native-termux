@@ -161,7 +161,8 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
                 .setPositiveButton(R.string.consent_accept,
                         (dialog, which) -> start(SETUP_COMMAND,
                                 "Set up freebuff-native",
-                                "Download and install freebuff-native"))
+                                "Download and install freebuff-native",
+                                false))
                 .show();
     }
 
@@ -169,7 +170,7 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
         if (!requireTermux()) {
             return;
         }
-        start(CHECK_COMMAND, "Check freebuff-native", "Report the state of the install");
+        start(CHECK_COMMAND, "Check freebuff-native", "Report the state of the install", true);
     }
 
     private void openTermux() {
@@ -181,15 +182,15 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
         }
     }
 
-    private void start(String command, String label, String description) {
+    private void start(String command, String label, String description, boolean background) {
         if (checkSelfPermission(PERMISSION_RUN_COMMAND) != PackageManager.PERMISSION_GRANTED) {
             // RUN_COMMAND is a dangerous permission owned by Termux; without it
             // startService throws and the reason looks like a settings problem.
-            pending = () -> send(command, label, description);
+            pending = () -> send(command, label, description, background);
             requestPermissions(new String[] {PERMISSION_RUN_COMMAND}, REQUEST_RUN_COMMAND);
             return;
         }
-        send(command, label, description);
+        send(command, label, description, background);
     }
 
     @Override
@@ -206,7 +207,7 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
         }
     }
 
-    private void send(String command, String label, String description) {
+    private void send(String command, String label, String description, boolean background) {
         PendingIntent result = PendingIntent.getBroadcast(this, 0,
                 new Intent(RunCommandReceiver.ACTION_RESULT).setPackage(getPackageName()),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
@@ -217,7 +218,9 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
         intent.putExtra("com.termux.RUN_COMMAND_PATH", TERMUX_BASH);
         intent.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", new String[] {"-lc", command});
         intent.putExtra("com.termux.RUN_COMMAND_WORKDIR", TERMUX_HOME);
-        intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", false);
+        // Only a background command reports its output back through the
+        // PendingIntent; a visible one runs in the Termux window instead.
+        intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", background);
         intent.putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "0");
         intent.putExtra("com.termux.RUN_COMMAND_COMMAND_LABEL", label);
         intent.putExtra("com.termux.RUN_COMMAND_COMMAND_DESCRIPTION", description);

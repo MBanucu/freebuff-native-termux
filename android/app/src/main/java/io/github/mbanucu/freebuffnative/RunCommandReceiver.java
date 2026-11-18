@@ -52,7 +52,7 @@ public final class RunCommandReceiver extends BroadcastReceiver {
 
     private static String describe(Bundle result) {
         if (result == null) {
-            return "Termux returned no result. If the command ran, its output is in the Termux window.";
+            return "Termux returned no result. Visible commands run in the Termux window; only background commands report back here.";
         }
 
         StringBuilder text = new StringBuilder();
