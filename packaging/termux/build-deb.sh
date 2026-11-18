@@ -92,7 +92,15 @@ for module in "$HERE"/lib/*.sh; do
 done
 
 say "compiling the prebuilt spawn shim"
-"$CC" --target="$TARGET" -fPIC -shared -nostdlib -nostdinc -O2 -Wall -Wextra \
+# -fuse-ld=lld: clang's default on Termux is lld, but a cross build on a
+# Debian/Ubuntu host otherwise picks the host binutils, which cannot link the
+# other architecture.  The shim is freestanding, so no cross sysroot is needed.
+linker=()
+case ${CC##*/} in
+    *clang*) linker+=(-fuse-ld=lld) ;;
+esac
+"$CC" --target="$TARGET" "${linker[@]}" -fPIC -shared -nostdlib -nostdinc \
+    -O2 -Wall -Wextra \
     -o "$LIB/shim/prebuilt/$ARCH/freebuff-spawn-shim.so" \
     "$HERE/shim/freebuff-spawn-shim.c"
 chmod 644 "$LIB/shim/prebuilt/$ARCH/freebuff-spawn-shim.so"
