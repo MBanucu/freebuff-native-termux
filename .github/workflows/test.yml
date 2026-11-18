@@ -30,7 +30,7 @@ jobs:
       - name: Syntax
         run: |
           shopt -s nullglob
-          files=(freebuff-native-termux.sh lib/*.sh packaging/termux/*.sh test/*.sh test/installer/*.sh)
+          files=(freebuff-native-termux.sh lib/*.sh packaging/termux/*.sh packaging/termux/repo/*.sh test/*.sh test/installer/*.sh)
           bash -n "${files[@]}"
 
       - name: ShellCheck (errors are fatal)
@@ -39,7 +39,7 @@ jobs:
             sudo apt-get update -qq && sudo apt-get install -y shellcheck
           fi
           shopt -s nullglob
-          files=(freebuff-native-termux.sh lib/*.sh packaging/termux/*.sh test/*.sh test/installer/*.sh)
+          files=(freebuff-native-termux.sh lib/*.sh packaging/termux/*.sh packaging/termux/repo/*.sh test/*.sh test/installer/*.sh)
           shellcheck -S error "${files[@]}"
 
       # Advisory: the installer intentionally uses constructs ShellCheck only
@@ -48,7 +48,7 @@ jobs:
         continue-on-error: true
         run: |
           shopt -s nullglob
-          files=(freebuff-native-termux.sh lib/*.sh packaging/termux/*.sh test/*.sh test/installer/*.sh)
+          files=(freebuff-native-termux.sh lib/*.sh packaging/termux/*.sh packaging/termux/repo/*.sh test/*.sh test/installer/*.sh)
           shellcheck -S warning -f gcc "${files[@]}"
 
       - name: Tests
@@ -56,6 +56,9 @@ jobs:
 
       - name: Shim tests
         run: bash test/shim-test.sh
+
+      - name: Repository tests
+        run: bash test/repo-test.sh
 
   package:
     name: package (${{ matrix.os }})

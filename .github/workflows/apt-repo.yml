@@ -1,0 +1,73 @@
+name: apt-repo
+
+# Builds both .deb architectures, signs an APT repository and publishes it to
+# GitHub Pages.  The freebuff-repo package at the site root adds the source and
+# key, after which `pkg install freebuff-native` works like any other package.
+#
+# Runs on a tag (so a release is installable through apt) and on demand.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: publish repository
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build tools
+        run: |
+          if ! command -v clang >/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y clang
+          fi
+          clang --version | head -1
+          dpkg-deb --version | head -1
+
+      - name: Build packages for both architectures
+        run: |
+          FREEBUFF_PKG_ARCH=aarch64 bash packaging/termux/build-deb.sh dist
+          FREEBUFF_PKG_ARCH=x86_64 bash packaging/termux/build-deb.sh dist
+          bash packaging/termux/repo/build-repo-package.sh dist
+
+      - name: Sign and index
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "$APT_GPG_PRIVATE_KEY" ]; then
+            echo "::error::APT_GPG_PRIVATE_KEY is not set"
+            exit 1
+          fi
+          install -m 700 -d "$HOME/.gnupg"
+          printf '%s\n' "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
+          key=$(gpg --batch --list-secret-keys --with-colons |
+                awk -F: '/^sec:/ {print $5; exit}')
+          test -n "$key"
+          bash packaging/termux/repo/build-repo.sh dist public "$key"
+          cp dist/freebuff-repo_*_all.deb public/freebuff-repo_all.deb
+          cp packaging/termux/repo/index.html public/index.html
+          cp packaging/termux/repo/install.sh public/install.sh
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

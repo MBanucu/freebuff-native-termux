@@ -4,3 +4,6 @@
 
 # Packaging output
 dist/
+
+# APT repository output
+public/

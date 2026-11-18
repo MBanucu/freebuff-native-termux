@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>freebuff-native APT repository</title>
+<style>
+  body { max-width: 44rem; margin: 3rem auto; padding: 0 1rem;
+         font: 16px/1.55 system-ui, sans-serif; color: #1b1b1b; }
+  code, pre { background: #f3f3f3; border-radius: 4px; }
+  code { padding: .1rem .3rem; }
+  pre { padding: .8rem 1rem; overflow-x: auto; }
+  h1 { font-size: 1.6rem; }
+  .muted { color: #666; }
+</style>
+</head>
+<body>
+<h1>freebuff-native</h1>
+<p>
+  Native <a href="https://github.com/CodebuffAI/freebuff">Freebuff</a> CLI for
+  Termux: the upstream binary runs on the Android kernel through Termux's glibc
+  loader, with no proot and no ptrace.
+</p>
+
+<h2>Install</h2>
+<pre>curl -fsSL https://mbanucu.github.io/freebuff-native-termux/install.sh | bash
+pkg install freebuff-native
+freebuff-native --download
+freebuff</pre>
+
+<p class="muted">
+  The install script downloads
+  <a href="freebuff-repo_all.deb">freebuff-repo_all.deb</a>, installs it, and
+  runs <code>pkg update</code>.  If you prefer to inspect it first, download
+  that file and run <code>pkg install ./freebuff-repo_all.deb</code>.
+</p>
+
+<h2>What the package does</h2>
+<p>
+  <code>freebuff-native</code> installs the glibc runtime, fetches the current
+  official Freebuff release, verifies its published sha256, and writes the
+  launcher.  The 136&nbsp;MB binary is not in the package; it is fetched on
+  first use from GitHub.  <code>--from DIR</code> remains the offline path.
+</p>
+
+<h2>Repository</h2>
+<ul>
+  <li><a href="https://github.com/MBanucu/freebuff-native-termux">GitHub</a></li>
+  <li><a href="https://github.com/MBanucu/freebuff-native-termux/releases/latest">Releases</a></li>
+  <li><a href="dists/stable/InRelease">dists/stable/InRelease</a></li>
+  <li><a href="freebuff.gpg">signing key</a></li>
+</ul>
+</body>
+</html>

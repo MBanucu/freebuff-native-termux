@@ -480,6 +480,14 @@ The control file, maintainer scripts and launcher are rendered from
 `packaging/termux/templates/*.in`, so the metadata and the scripts are readable
 on their own rather than embedded in the builder.
 
+`packaging/termux/repo/` turns those packages into an APT repository hosted on
+GitHub Pages. `build-repo.sh` writes the `Packages`/`Release` indexes and signs
+`InRelease`; `build-repo-package.sh` builds `freebuff-repo`, the tiny
+`Architecture: all` package that adds the source and signing key. After that,
+`pkg update && pkg install freebuff-native` installs and updates it like any
+other Termux package. The `apt-repo` workflow builds both architectures and
+publishes the tree on tags.
+
 The shim object is built at package time with `clang --target=<arch>-linux-gnu`
 (the source is freestanding, so no sysroot is needed) and stored under
 `shim/prebuilt/<arch>/`, which is exactly where the installer looks first. A

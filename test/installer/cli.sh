@@ -5,7 +5,7 @@
 begin 'syntax and cli'
 # Parse every shell file the repo ships, not just the entry point: a module that
 # does not parse is only loaded on a device otherwise.
-for sh in "$SCRIPT" "$ROOT"/lib/*.sh "$ROOT"/packaging/termux/*.sh \
+for sh in "$SCRIPT" "$ROOT"/lib/*.sh "$ROOT"/packaging/termux/*.sh "$ROOT"/packaging/termux/repo/*.sh \
           "$ROOT"/test/*.sh "$ROOT"/test/installer/*.sh; do
     bash -n "$sh"
     expect_status 0 $? "$(basename "$sh") parses"

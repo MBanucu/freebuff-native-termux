@@ -10,10 +10,12 @@ upstream binary, on the Android kernel, with no proot and no ptrace.
 | `shim/freebuff-spawn-shim.c` | the `LD_PRELOAD` object that repairs freebuff's broker re-exec (upstream #1688) |
 | `packaging/termux/build-deb.sh` | builds the Termux `.deb` (installer + prebuilt shim, no 136 MB payload) |
 | `packaging/termux/templates/` | control file, maintainer scripts and launcher, rendered by the builder |
+| `packaging/termux/repo/` | APT repository builder, `freebuff-repo` setup package, Pages index |
 | `test/installer-test.sh` | the installer test runner; cases live in `test/installer/` |
 | `test/shim-test.sh` | behavioural tests for the shim, with two small C fixtures in `test/shim/` |
 | `test/package-test.sh` | builds a package with a throwaway prefix and inspects its contents |
 | `.github/workflows/test.yml` | syntax, ShellCheck, tests and packaging on x86_64 and arm64 |
+| `.github/workflows/apt-repo.yml` | builds both architectures, signs and publishes the APT repository |
 | `docs/investigation.md` | the investigation: why the released binary cannot run as-is, every step, and what was actually observed on an unrooted device |
 | `docs/upstream-issue-1688.md` | snapshot of the reported upstream bug that the shim works around |
 
@@ -49,11 +51,29 @@ Re-running is the way to repair an install: each step detects what is already in
 place, so a second run reports `0 change(s) applied`. A cached release archive is
 re-used while its checksum still matches.
 
+### Install from the APT repository
+
+The repository carries the same package for aarch64 and x86_64, plus updates
+through `pkg`. The one-time setup installs `freebuff-repo`, which adds the
+source and its signing key:
+
+```bash
+curl -fsSL https://mbanucu.github.io/freebuff-native-termux/install.sh | bash
+pkg install freebuff-native
+freebuff-native --download      # first run: glibc + the release
+freebuff
+```
+
+If you prefer to read the setup first, download
+[`freebuff-repo_all.deb`](https://mbanucu.github.io/freebuff-native-termux/freebuff-repo_all.deb)
+and run `pkg install ./freebuff-repo_all.deb`, then `pkg update`. The repository
+root is <https://mbanucu.github.io/freebuff-native-termux/>.
+
 ### Install from the `.deb`
 
 Prebuilt packages for aarch64 and x86_64 are attached to the
-[latest release](https://github.com/MBanucu/freebuff-native-termux/releases/latest).
-To build one locally:
+[latest release](https://github.com/MBanucu/freebuff-native-termux/releases/latest)
+and served by the APT repository above. To build one locally:
 
 ```bash
 bash packaging/termux/build-deb.sh
@@ -75,6 +95,7 @@ credentials, projects); `dpkg -P` also removes the binary and `tree-sitter.wasm`
 bash test/installer-test.sh   # installer: fake Termux prefix, no device needed
 bash test/shim-test.sh        # shim: compiles it with the host cc
 bash test/package-test.sh     # .deb: builds and inspects a package, no root
+bash test/repo-test.sh        # apt repo: indexes, Release, signing, freebuff-repo
 ```
 
 Each installer test builds a throwaway prefix under `mktemp -d` with a stub
@@ -127,3 +148,8 @@ run. The wrapper also exports `CODEBUFF_RG_PATH`, which covers code search.
   by mapping the 136 MB binary. See section 6 of [docs/investigation.md](docs/investigation.md).
 - `aarch64` is the verified target. The `x86_64` path is implemented and tested in
   CI, but has not been run on a device.
+
+## License
+
+MIT — see [LICENSE](LICENSE). The Freebuff binary is Apache-2.0 and is not
+redistributed here; `--download` fetches it from its official release.
