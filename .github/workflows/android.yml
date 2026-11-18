@@ -1,0 +1,73 @@
+name: android
+
+# Builds the setup app.  The scaffold was written without an Android SDK, so
+# this workflow is the compiler: it is what turns "probably builds" into an APK
+# that can be installed on a device.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'android/**'
+      - 'test/android-*'
+      - '.github/workflows/android.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build debug apk
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Platform and build tools
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          sdkmanager --list_installed | sed -n '1,20p'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Assemble
+        working-directory: android
+        run: gradle --no-daemon --stacktrace assembleDebug
+
+      - name: Report the apk
+        working-directory: android
+        run: |
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          ls -l "$apk"
+          echo "sha256 $(sha256sum "$apk" | cut -d' ' -f1)"
+          aapt2 dump badging "$apk" 2>/dev/null |
+            grep -E "^(package|sdkVersion|targetSdkVersion|application-label|uses-permission)" |
+            head -10
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: freebuff-native-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+
+      # F-Droid runs lint itself; treat ours as advice while the app is young.
+      - name: Lint (advisory)
+        continue-on-error: true
+        working-directory: android
+        run: gradle --no-daemon lintDebug
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: freebuff-native-lint
+          path: android/app/build/reports/lint-results-debug.*
+          if-no-files-found: ignore
