@@ -1,0 +1,3 @@
+# Test and installer artifacts
+.selftest*/
+*.bak
