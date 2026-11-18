@@ -1,0 +1,259 @@
+package io.github.mbanucu.freebuffnative;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.PendingIntent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Typeface;
+import android.net.Uri;
+import android.os.Bundle;
+import android.util.TypedValue;
+import android.view.View;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+/**
+ * Setup companion for freebuff-native.
+ *
+ * <p>It owns no code that installs anything: it explains the download, asks for
+ * consent, and sends one command to Termux through RUN_COMMAND.  Every state it
+ * shows comes from running the installer's own {@code --check} in Termux.
+ */
+public final class MainActivity extends Activity implements RunCommandReceiver.Listener {
+
+    private static final String TERMUX_PACKAGE = "com.termux";
+    private static final String RUN_COMMAND_SERVICE = "com.termux.app.RunCommandService";
+    private static final String RUN_COMMAND_ACTION = "com.termux.RUN_COMMAND";
+    private static final String TERMUX_BASH = "/data/data/com.termux/files/usr/bin/bash";
+    private static final String TERMUX_HOME = "/data/data/com.termux/files/home";
+
+    private static final String CHECK_COMMAND = "freebuff-native --check";
+
+    private static final String SETUP_COMMAND =
+            "curl -fsSL https://mbanucu.github.io/freebuff-native-termux/install.sh | bash"
+                    + " && pkg install -y freebuff-native"
+                    + " && freebuff-native --download";
+
+    private static final String ALLOW_EXTERNAL_APPS =
+            "echo 'allow-external-apps=true' >> ~/.termux/termux.properties"
+                    + " && termux-reload-settings";
+
+    private TextView status;
+    private TextView output;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(buildUi());
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        RunCommandReceiver.setListener(this);
+        refresh();
+    }
+
+    @Override
+    protected void onPause() {
+        RunCommandReceiver.setListener(null);
+        super.onPause();
+    }
+
+    // --- ui ------------------------------------------------------------------
+
+    private View buildUi() {
+        int pad = dp(20);
+
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setPadding(pad, pad, pad, pad);
+
+        TextView title = new TextView(this);
+        title.setText(R.string.app_name);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        column.addView(title);
+
+        TextView tagline = new TextView(this);
+        tagline.setText(R.string.tagline);
+        tagline.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        tagline.setPadding(0, dp(6), 0, dp(16));
+        column.addView(tagline);
+
+        status = new TextView(this);
+        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        status.setTypeface(Typeface.DEFAULT_BOLD);
+        status.setPadding(0, 0, 0, dp(16));
+        column.addView(status);
+
+        column.addView(button(R.string.action_install, v -> confirmSetup()));
+        column.addView(button(R.string.action_check, v -> runCheck()));
+        column.addView(button(R.string.action_open, v -> openTermux()));
+
+        TextView hint = new TextView(this);
+        hint.setText(R.string.hint);
+        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        hint.setPadding(0, dp(16), 0, dp(8));
+        hint.setTextIsSelectable(true);
+        column.addView(hint);
+
+        output = new TextView(this);
+        output.setTypeface(Typeface.MONOSPACE);
+        output.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        output.setTextIsSelectable(true);
+        output.setPadding(dp(12), dp(12), dp(12), dp(12));
+        output.setBackgroundColor(0xFFF0F0F0);
+        output.setVisibility(View.GONE);
+        column.addView(output);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(column, new ScrollView.LayoutParams(
+                ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT));
+        return scroll;
+    }
+
+    private Button button(int label, View.OnClickListener onClick) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setOnClickListener(onClick);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = dp(8);
+        button.setLayoutParams(params);
+        return button;
+    }
+
+    private int dp(int value) {
+        return Math.round(getResources().getDisplayMetrics().density * value);
+    }
+
+    private void refresh() {
+        status.setText(isTermuxInstalled()
+                ? R.string.status_termux_installed
+                : R.string.status_termux_missing);
+    }
+
+    // --- actions -------------------------------------------------------------
+
+    private void confirmSetup() {
+        if (!requireTermux()) {
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.consent_title)
+                .setMessage(R.string.consent_message)
+                .setNegativeButton(R.string.consent_cancel, null)
+                .setPositiveButton(R.string.consent_accept,
+                        (dialog, which) -> run(SETUP_COMMAND,
+                                "Set up freebuff-native",
+                                "Download and install freebuff-native"))
+                .show();
+    }
+
+    private void runCheck() {
+        if (!requireTermux()) {
+            return;
+        }
+        run(CHECK_COMMAND, "Check freebuff-native", "Report the state of the install");
+    }
+
+    private void openTermux() {
+        Intent launch = getPackageManager().getLaunchIntentForPackage(TERMUX_PACKAGE);
+        if (launch != null) {
+            startActivity(launch);
+        } else {
+            showMissingDialog();
+        }
+    }
+
+    private void run(String command, String label, String description) {
+        PendingIntent pending = PendingIntent.getBroadcast(this, 0,
+                new Intent(RunCommandReceiver.ACTION_RESULT).setPackage(getPackageName()),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+
+        Intent intent = new Intent();
+        intent.setClassName(TERMUX_PACKAGE, RUN_COMMAND_SERVICE);
+        intent.setAction(RUN_COMMAND_ACTION);
+        intent.putExtra("com.termux.RUN_COMMAND_PATH", TERMUX_BASH);
+        intent.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", new String[] {"-lc", command});
+        intent.putExtra("com.termux.RUN_COMMAND_WORKDIR", TERMUX_HOME);
+        intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", false);
+        intent.putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "0");
+        intent.putExtra("com.termux.RUN_COMMAND_COMMAND_LABEL", label);
+        intent.putExtra("com.termux.RUN_COMMAND_COMMAND_DESCRIPTION", description);
+        intent.putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pending);
+
+        try {
+            startService(intent);
+        } catch (RuntimeException refused) {
+            showPermissionHelp();
+        }
+    }
+
+    @Override
+    public void onCommandResult(String text) {
+        output.setText(text);
+        output.setVisibility(View.VISIBLE);
+        refresh();
+    }
+
+    // --- helpers -------------------------------------------------------------
+
+    private boolean isTermuxInstalled() {
+        try {
+            getPackageManager().getPackageInfo(TERMUX_PACKAGE, 0);
+            return true;
+        } catch (PackageManager.NameNotFoundException absent) {
+            return false;
+        }
+    }
+
+    private boolean requireTermux() {
+        if (isTermuxInstalled()) {
+            return true;
+        }
+        showMissingDialog();
+        return false;
+    }
+
+    private void showMissingDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.missing_title)
+                .setMessage(R.string.missing_message)
+                .setNegativeButton(R.string.missing_negative, null)
+                .setPositiveButton(R.string.missing_positive, (dialog, which) -> openFdroid())
+                .show();
+    }
+
+    private void openFdroid() {
+        Intent browser = new Intent(Intent.ACTION_VIEW,
+                Uri.parse("https://f-droid.org/packages/com.termux/"));
+        startActivity(browser);
+    }
+
+    private void showPermissionHelp() {
+        copy(ALLOW_EXTERNAL_APPS);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.permission_title)
+                .setMessage(getString(R.string.permission_message)
+                        + "\n\n" + ALLOW_EXTERNAL_APPS)
+                .setPositiveButton(R.string.dialog_close, null)
+                .show();
+    }
+
+    private void copy(String text) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText("freebuff-native", text));
+        }
+    }
+}

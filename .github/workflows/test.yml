@@ -63,6 +63,9 @@ jobs:
       - name: TUR recipe tests
         run: bash test/tur-test.sh
 
+      - name: Android scaffold checks
+        run: bash test/android-test.sh
+
   package:
     name: package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

@@ -1,0 +1,28 @@
+Freebuff is a coding agent for the terminal. It ships as a single executable built for glibc, so on Android it normally means a proot container: a second userland, extra memory, and a broken shell for the agent.
+
+freebuff-native runs the official freebuff binary directly on the Android kernel, through the glibc runtime that Termux provides. No proot, no ptrace, no second Android app pretending to be Linux. A small preloaded shim repairs the agent's terminal-command broker, so the shell, git and code search work inside the agent.
+
+This app is the setup companion. It does not contain freebuff and it does not install anything by itself:
+
+- it checks whether Termux is installed,
+- it shows exactly what will be downloaded, and how much,
+- with your consent, it sends one command to Termux that installs the package and fetches the release,
+- afterwards it can report the state of your install through the installer's own --check,
+- and it explains how to fix the one Termux setting that blocks commands from other apps.
+
+Requirements:
+
+- Termux, installed from F-Droid or GitHub, not from Google Play,
+- Android 7.0 or newer,
+- about 540 MB of free space for the glibc runtime and the freebuff release,
+- an internet connection for the first setup.
+
+What gets downloaded, and from where:
+
+- the freebuff-native package, from a signed APT repository hosted on GitHub Pages,
+- the glibc runtime, from the termux-glibc repository,
+- the official freebuff release, from its GitHub releases, verified against the sha256 published with it.
+
+The app has no internet permission, no analytics, no accounts and no background work. It only talks to Termux, and only when you press a button.
+
+The package source, the installer, the shim and the issue notes are at https://github.com/MBanucu/freebuff-native-termux (MIT). freebuff itself is Apache-2.0 and is not redistributed here.

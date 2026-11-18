@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">freebuff-native</string>
+    <string name="tagline">Run the Freebuff coding agent natively in Termux — no proot, no second userland.</string>
+
+    <string name="status_checking">Checking Termux…</string>
+    <string name="status_termux_installed">Termux is installed.</string>
+    <string name="status_termux_missing">Termux is not installed. Install it first; this app only handles setup.</string>
+
+    <string name="action_check">Check setup</string>
+    <string name="action_install">Set up freebuff-native</string>
+    <string name="action_open">Open Termux</string>
+
+    <string name="hint">Setup runs in Termux, where you can watch it. The command is shown before anything runs.
+
+You may need Termux\'s \"allow external apps\" setting for this app to send commands: add allow-external-apps=true to ~/.termux/termux.properties.</string>
+
+    <string name="consent_title">Download about 540 MB?</string>
+    <string name="consent_message">Termux will download and install:
+
+• the freebuff-native package (~30 KB) from a signed APT repository,
+• the glibc runtime it needs (~400 MB installed, glibc packages from the termux-glibc repository),
+• the official Freebuff release (~136 MB) from GitHub, verified against the sha256 published with it.
+
+Nothing is uploaded. Use Wi-Fi if mobile data is metered. You can cancel now and run the same steps by hand later.</string>
+    <string name="consent_accept">Start setup</string>
+    <string name="consent_cancel">Cancel</string>
+
+    <string name="permission_title">Termux refused the command</string>
+    <string name="permission_message">Termux only accepts commands from other apps when this is enabled in its own settings:
+
+  allow-external-apps=true
+
+Add that line to ~/.termux/termux.properties inside Termux, then run termux-reload-settings (or restart Termux), and try again. The command is copied to the clipboard for you.</string>
+
+    <string name="missing_title">Termux is required</string>
+    <string name="missing_message">This app does not install Freebuff by itself: it starts the setup in Termux. Install Termux from F-Droid, then come back.</string>
+
+    <string name="missing_positive">Open F-Droid</string>
+    <string name="missing_negative">Close</string>
+
+    <string name="result_title">Termux said</string>
+    <string name="result_empty">No output.</string>
+    <string name="dialog_close">Close</string>
+</resources>

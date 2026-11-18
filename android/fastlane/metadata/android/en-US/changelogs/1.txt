@@ -1,0 +1,2 @@
+First scaffold: detect Termux, show the download sizes, run setup after consent,
+and report the result of freebuff-native --check.
