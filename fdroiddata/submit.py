@@ -26,7 +26,7 @@ import urllib.request
 from pathlib import Path
 
 API = "https://gitlab.com/api/v4"
-UPSTREAM = "f-droid/fdroiddata"
+UPSTREAM = "fdroid/fdroiddata"
 RFP = "fdroid/rfp"
 APP_ID = "io.github.mbanucu.freebuffnative"
 FILE = "metadata/" + APP_ID + ".yml"
@@ -47,7 +47,7 @@ class GitLab:
             return {"web_url": "<dry run>"}
         data = None if payload is None else json.dumps(payload).encode()
         request = urllib.request.Request(API + path, data=data, method=method)
-        request.add_header("PRIVATE-TOKEN", self.token)
+        request.add_header("Authorization", "Bearer " + self.token)
         if data:
             request.add_header("Content-Type", "application/json")
         try:
