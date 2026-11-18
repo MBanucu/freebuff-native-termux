@@ -440,3 +440,53 @@ without freebuff or a device.
 Reported upstream as [CodebuffAI/freebuff#1688](https://github.com/CodebuffAI/freebuff/issues/1688).
 
 
+
+## 9. Fetching the binary (`--download`) and the `.deb`
+
+`--download` is the online counterpart of `--from`. It reads
+`https://registry.npmjs.org/freebuff/latest`, takes `version` and the checksum in
+`binaryChecksums` for this CPU, then fetches
+
+```
+https://github.com/CodebuffAI/codebuff-community/releases/download/freebuff-v<version>/freebuff-linux-<linux-arm64|linux-x64>.tar.gz
+```
+
+That is the same archive the npm launcher downloads (51,193,657 B compressed for
+0.2.36, sha256 `ed752a…`). It is verified before use and cached in
+`$TMPDIR/freebuff-native`, so repairing an install does not re-fetch 49 MB while
+the published checksum still matches. The archive holds `freebuff` (136,816,784
+B) and `tree-sitter.wasm` (205,488 B) but no `rg`: when no
+`~/.config/manicode/rg` is present, the installer falls back to the native
+`ripgrep` package and the wrapper points `CODEBUFF_RG_PATH` at `$PREFIX/bin/rg`.
+
+`--download` also stays away from an old proot rootfs: unlike `--from`, it does
+not silently import credentials from it (the binary and settings already in
+`~/.config/manicode` are kept).
+
+### The package
+
+`packaging/termux/build-deb.sh` produces
+`dist/freebuff-native_<version>_<arch>.deb`, about 20 KB:
+
+```
+$PREFIX/bin/freebuff-native                         launcher
+$PREFIX/lib/freebuff-native/freebuff-native.sh      installer
+$PREFIX/lib/freebuff-native/shim/…                  source + prebuilt object
+$PREFIX/share/doc/freebuff-native/README.md
+```
+
+The shim object is built at package time with `clang --target=<arch>-linux-gnu`
+(the source is freestanding, so no sysroot is needed) and stored under
+`shim/prebuilt/<arch>/`, which is exactly where the installer looks first. A
+package install therefore needs no compiler at all.
+
+The binary is not packaged. `postinst` runs `freebuff-native --download` only
+when the glibc runtime is already in `$PREFIX/glibc`: dpkg holds its lock while
+maintainer scripts run, so a first-time `glibc-runner` install cannot happen
+there. In that case it prints the single follow-up command instead. A network
+failure never fails the dpkg transaction.
+
+`dpkg -r` removes the wrapper and the generated shim and keeps
+`~/.config/manicode` (binary, credentials, projects); `dpkg -P` also removes the
+binary and `tree-sitter.wasm`. This is deliberate: the 136 MB download is
+expensive on a phone, and credentials are user data.

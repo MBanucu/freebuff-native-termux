@@ -14,7 +14,12 @@
 #   ./freebuff-native-termux.sh --dry-run    print what would happen, change nothing
 #   ./freebuff-native-termux.sh --force      redo the glibc runtime and the wrapper
 #   ./freebuff-native-termux.sh --from DIR   copy binary/credentials from DIR
+#   ./freebuff-native-termux.sh --download   fetch the official release for this CPU
 #   ./freebuff-native-termux.sh --no-creds   do not copy credentials and settings
+#
+# --download resolves the current release through the npm metadata, verifies the
+# archive's sha256, and installs the binary plus tree-sitter.wasm.  It needs
+# network access; --from remains the offline path.
 #
 # The binary is never modified.  It is started *by* the glibc loader, because
 # patching its PT_INTERP with patchelf makes the Bun standalone executable
@@ -25,6 +30,12 @@ set -euo pipefail
 # Where the glibc packages come from.  Overridable for mirrors.
 GLIBC_REPO=${FREEBUFF_GLIBC_REPO:-https://packages-cf.termux.dev/apt/termux-glibc}
 
+# Where --download gets the release.  The npm metadata names the current version
+# and the archive's sha256, so no version is hardcoded here; the archive is the
+# same file the npm installer downloads.  Both URLs are overridable for mirrors.
+FREEBUFF_METADATA_URL=${FREEBUFF_METADATA_URL:-https://registry.npmjs.org/freebuff/latest}
+FREEBUFF_RELEASE_BASE=${FREEBUFF_RELEASE_BASE:-https://github.com/CodebuffAI/codebuff-community/releases/download}
+
 # Default place the old proot-based install kept the binary.  Only used as a
 # source when --from is not given.
 PROOT_RFS=${PREFIX:-}/var/lib/proot-distro/containers/debian/rootfs
@@ -32,8 +43,8 @@ PROOT_RFS=${PREFIX:-}/var/lib/proot-distro/containers/debian/rootfs
 # Filled in by main() once the Termux checks pass; declared here so `set -u`
 # cannot trip over them in the helpers.
 CFG= BIN= GLIBC_DIR= WRAPPER= CACHE= PKGARCH= LOADER= IDX_PATH=
-SHIM= SHIM_SRC= SHIM_TARGET=
-FORCE=0 DRY_RUN=0 CHECK=0 COPY_CREDS=1 FROM=
+SHIM= SHIM_SRC= SHIM_TARGET= SHIM_PREBUILT=
+FORCE=0 DRY_RUN=0 CHECK=0 COPY_CREDS=1 FROM= DOWNLOAD=0
 CHANGED=0 MISSING=0
 
 # The shim source sits next to this script.  Resolved without dirname(1), which
@@ -74,6 +85,7 @@ parse_args() {
             -n|--dry-run) DRY_RUN=1 ;;
             -c|--check)   CHECK=1 ;;
             -f|--force)   FORCE=1 ;;
+            --download)   DOWNLOAD=1 ;;
             --no-creds)   COPY_CREDS=0 ;;
             --from)
                 (($# >= 2)) || die "--from needs a directory"
@@ -88,6 +100,9 @@ parse_args() {
     done
     # --check must not change anything, so it wins over --force.
     if ((CHECK)); then FORCE=0; fi
+    if ((DOWNLOAD)) && [[ -n $FROM ]]; then
+        die "--download and --from cannot be combined; pick one source"
+    fi
 }
 
 # ---------------------------------------------------------- environment -----
@@ -330,10 +345,11 @@ ensure_glibc() {
 # The binary must be a pristine ELF that still asks for the glibc loader.  Only
 # the first 8 KiB is read: .interp sits in the first page, and grepping 136 MB
 # on a phone is slow.
-binary_ok() {
-    [[ -s $BIN ]] || return 1
-    [[ $(head -c 4 "$BIN") == $'\177ELF' ]] || return 1
-    head -c 8192 "$BIN" | grep -qa 'ld-linux' || return 1
+binary_ok() { # [file], default $BIN
+    local bin=${1:-$BIN}
+    [[ -s $bin ]] || return 1
+    [[ $(head -c 4 "$bin") == $'\177ELF' ]] || return 1
+    head -c 8192 "$bin" | grep -qa 'ld-linux' || return 1
 }
 
 find_source() {
@@ -369,9 +385,152 @@ copy_if_missing() { # src dst
     act "copied ${dst##*/}"
 }
 
+# ---------------------------------------------------------------- download -----
+
+# The release publishes one archive per CPU.  These names are the keys of the
+# npm checksum object and the tail of the archive filename.
+release_target() { # pkgarch
+    case $1 in
+        aarch64) printf 'linux-arm64\n' ;;
+        x86_64)  printf 'linux-x64\n' ;;
+        *) return 1 ;;
+    esac
+}
+
+# Read a string from the compact npm metadata without jq: the document is
+# machine-generated and each key appears once, and the values wanted here
+# (version, hex checksums) are plain strings.
+json_string() { # key file
+    local m
+    m=$(grep -o "\"$1\":\"[^\"]*\"" "$2" 2>/dev/null | head -n 1) || return 1
+    [[ -n $m ]] || return 1
+    m=${m#*:\"}
+    printf '%s\n' "${m%\"}"
+}
+
+sha256_of() { # file
+    local out
+    if command -v sha256sum >/dev/null 2>&1; then
+        out=$(sha256sum "$1") || return 1
+        out=${out%% *}
+    elif command -v shasum >/dev/null 2>&1; then
+        out=$(shasum -a 256 "$1") || return 1
+        out=${out%% *}
+    elif command -v openssl >/dev/null 2>&1; then
+        out=$(openssl dgst -sha256 "$1") || return 1
+        out=${out##* }
+    else
+        return 1
+    fi
+    printf '%s\n' "$out"
+}
+
+# Fetch the current release, check it against the published sha256, and install
+# the binary plus tree-sitter.wasm (the archive has no ripgrep).  The archive
+# stays in $CACHE, so a repair run re-downloads only when the version changes or
+# the cached file is damaged.
+install_from_download() {
+    local target ver sum url tgz meta dir got
+    target=$(release_target "$PKGARCH") || die "no release archive for $PKGARCH"
+    tgz=$CACHE/freebuff-$target.tar.gz
+    meta=$CACHE/freebuff-latest.json
+
+    if ((DRY_RUN)); then
+        act "would download the latest freebuff release for $target"
+        return 0
+    fi
+    command -v tar >/dev/null 2>&1 || die "tar is missing; run: pkg install tar"
+
+    mkdir -p "$CACHE"
+    act "resolving the current freebuff release"
+    fetch "$FREEBUFF_METADATA_URL" "$meta" || die "cannot read $FREEBUFF_METADATA_URL
+    (no network? --from DIR installs from a local copy instead)"
+    ver=$(json_string version "$meta") || die "no version in $FREEBUFF_METADATA_URL"
+    sum=$(json_string "$target" "$meta") ||
+        die "the release metadata has no checksum for $target"
+    url=$FREEBUFF_RELEASE_BASE/freebuff-v$ver/freebuff-$target.tar.gz
+
+    got=''
+    if [[ -s $tgz ]]; then got=$(sha256_of "$tgz" || true); fi
+    if [[ -n $got && $got == "$sum" ]]; then
+        ok "freebuff $ver archive already downloaded"
+    else
+        if [[ -e $tgz ]]; then
+            warn "discarding a cached archive that does not match the checksum"
+            rm -f "$tgz"
+        fi
+        act "downloading freebuff $ver ($target)"
+        fetch "$url" "$tgz" || die "download failed: $url"
+        CHANGED=$((CHANGED + 1))
+        got=$(sha256_of "$tgz" || true)
+        if [[ $got != "$sum" ]]; then
+            rm -f "$tgz"
+            die "checksum mismatch for $url
+    expected $sum
+    got      ${got:-<no sha256 tool; pkg install coreutils>}"
+        fi
+        ok "checksum verified (sha256 $sum)"
+    fi
+
+    dir=$CACHE/extract-$target
+    rm -rf "$dir"
+    mkdir -p "$dir"
+    tar -xzf "$tgz" -C "$dir" || die "cannot extract $tgz"
+    binary_ok "$dir/freebuff" || die "$url did not contain a usable freebuff binary"
+
+    mkdir -p "$CFG"
+    if [[ -e $BIN ]] && ! binary_ok; then
+        warn "existing binary is unusable; moved aside to $(basename "$BIN").bak"
+        mv -f "$BIN" "$BIN.bak"
+    fi
+    cp "$dir/freebuff" "$BIN"
+    chmod 700 "$BIN"
+    CHANGED=$((CHANGED + 1))
+
+    # Ship the parser data that belongs to this binary version; a stale .wasm
+    # from an older release would be silently wrong.
+    if [[ -f $dir/tree-sitter.wasm ]]; then
+        if [[ -f $CFG/tree-sitter.wasm ]] &&
+           [[ $(sha256_of "$CFG/tree-sitter.wasm") == "$(sha256_of "$dir/tree-sitter.wasm")" ]]; then
+            ok "tree-sitter.wasm up to date"
+        else
+            cp "$dir/tree-sitter.wasm" "$CFG/tree-sitter.wasm"
+            CHANGED=$((CHANGED + 1))
+            act "installed tree-sitter.wasm"
+        fi
+    fi
+    rm -rf "$dir"
+    ok "freebuff $ver installed ($BIN)"
+}
+
+# The release tarball ships no ripgrep, so a fresh --download has to get one.
+# The native Termux package is a bionic binary and runs fine as a child process.
+ensure_rg() {
+    if [[ -f $CFG/rg ]]; then
+        ok "ripgrep present (code search works)"
+        return 0
+    fi
+    if [[ -x $PREFIX/bin/rg ]]; then
+        ok "using ripgrep from $PREFIX/bin/rg"
+        return 0
+    fi
+    if ((DRY_RUN)); then
+        act "would install ripgrep"
+        return 0
+    fi
+    if pkg install -y ripgrep >/dev/null 2>&1 && [[ -x $PREFIX/bin/rg ]]; then
+        CHANGED=$((CHANGED + 1))
+        ok "installed ripgrep ($PREFIX/bin/rg)"
+        return 0
+    fi
+    warn "ripgrep is missing; code search will not work (run: pkg install ripgrep)"
+}
+
 ensure_config() {
     local src='' f
-    src=$(find_source || true)
+    # --download installs a fresh binary and must not silently harvest credentials
+    # from an old proot rootfs; --from keeps that behaviour for offline moves.
+    if ((!DOWNLOAD)); then src=$(find_source || true); fi
 
     if ((CHECK)); then
         if binary_ok; then
@@ -380,10 +539,10 @@ ensure_config() {
             warn "missing or unusable: $BIN"
             MISSING=$((MISSING + 1))
         fi
-        if [[ -f $CFG/rg ]]; then
+        if [[ -f $CFG/rg || -x $PREFIX/bin/rg ]]; then
             ok "ripgrep present (code search works)"
         else
-            warn "missing: $CFG/rg"
+            warn "missing: ripgrep (install it with: pkg install ripgrep)"
             MISSING=$((MISSING + 1))
         fi
         if [[ ! -f $CFG/tree-sitter.wasm ]]; then
@@ -394,10 +553,13 @@ ensure_config() {
 
     if binary_ok && ((!FORCE)); then
         ok "freebuff binary present ($(du -h "$BIN" | cut -f1))"
+    elif ((DOWNLOAD)); then
+        install_from_download
     else
         [[ -n $src ]] || die "no freebuff binary found to install.
     Pass --from with the directory holding the old copy, for example the
-    root/.config/manicode of the proot Debian rootfs, or a backup of it."
+    root/.config/manicode of the proot Debian rootfs, or a backup of it.
+    Or pass --download to fetch the official release."
         if ((DRY_RUN)); then
             act "would copy the binary and its data files from $src"
             return 0
@@ -415,30 +577,30 @@ ensure_config() {
         CHANGED=$((CHANGED + 1))
     fi
 
-    if ((DRY_RUN)); then return 0; fi
     # Nothing to import from: whatever is already in $CFG stays as it is.
-    if [[ -z $src ]]; then return 0; fi
-
-    # ripgrep runs natively as-is, which is what keeps the agent's code search
-    # working; tree-sitter.wasm is needed for parsing.
-    for f in rg tree-sitter.wasm; do
-        if [[ -f $src/$f ]]; then copy_if_missing "$src/$f" "$CFG/$f"; fi
-    done
-
-    if ((COPY_CREDS)); then
-        # Existing files win: they may be newer than the copy being imported (the
-        # old install kept refreshing its token).
-        for f in credentials.json settings.json device-key.json analytics-id.json freebuff-metadata.json; do
+    if ((!DRY_RUN)) && [[ -n $src ]]; then
+        # ripgrep runs natively as-is, which is what keeps the agent's code search
+        # working; tree-sitter.wasm is needed for parsing.
+        for f in rg tree-sitter.wasm; do
             if [[ -f $src/$f ]]; then copy_if_missing "$src/$f" "$CFG/$f"; fi
         done
-        if [[ -d $src/projects && ! -d $CFG/projects ]]; then
-            cp -a "$src/projects" "$CFG/projects"
-            CHANGED=$((CHANGED + 1))
-            act "copied projects/"
+
+        if ((COPY_CREDS)); then
+            # Existing files win: they may be newer than the copy being imported (the
+            # old install kept refreshing its token).
+            for f in credentials.json settings.json device-key.json analytics-id.json freebuff-metadata.json; do
+                if [[ -f $src/$f ]]; then copy_if_missing "$src/$f" "$CFG/$f"; fi
+            done
+            if [[ -d $src/projects && ! -d $CFG/projects ]]; then
+                cp -a "$src/projects" "$CFG/projects"
+                CHANGED=$((CHANGED + 1))
+                act "copied projects/"
+            fi
+        else
+            ok "skipped credentials and settings (--no-creds)"
         fi
-    else
-        ok "skipped credentials and settings (--no-creds)"
     fi
+    ensure_rg
 }
 
 # ------------------------------------------------------------ spawn shim -----
@@ -478,8 +640,29 @@ ensure_shim() {
         return 0
     fi
     if ((DRY_RUN)); then
-        act "would build the spawn shim from $SHIM_SRC"
+        if [[ -s $SHIM_PREBUILT ]]; then
+            act "would install the prebuilt spawn shim ($SHIM_PREBUILT)"
+        else
+            act "would build the spawn shim from $SHIM_SRC"
+        fi
         return 0
+    fi
+
+    # Packaging ships an object per architecture so a .deb install needs no
+    # compiler at all; check the magic anyway, because a text file here would be
+    # fatal to Android's linker.
+    if [[ -s $SHIM_PREBUILT ]]; then
+        if [[ $(head -c 4 "$SHIM_PREBUILT") == $'\177ELF' ]]; then
+            act "installing the prebuilt spawn shim"
+            mkdir -p "${SHIM%/*}"
+            cp "$SHIM_PREBUILT" "$SHIM.tmp"
+            chmod 700 "$SHIM.tmp"
+            mv -f "$SHIM.tmp" "$SHIM"
+            CHANGED=$((CHANGED + 1))
+            ok "spawn shim installed ($SHIM)"
+            return 0
+        fi
+        warn "ignoring $SHIM_PREBUILT: not an ELF object"
     fi
 
     # A failed build is never fatal: without the shim the CLI still starts and
@@ -566,9 +749,12 @@ if [[ -f "\$HOME/.config/manicode/freebuff-spawn-shim.so" ]] &&
     export LD_PRELOAD="\$HOME/.config/manicode/freebuff-spawn-shim.so"
 fi
 # In compiled mode freebuff looks for ripgrep in dirname(process.execPath), i.e.
-# $GLIBC_DIR/lib; point it at the copy that ships in ~/.config/manicode instead.
+# $GLIBC_DIR/lib; point it at the copy that ships in ~/.config/manicode, or at
+# the native Termux package when the release was installed with --download.
 if [[ -f "\$HOME/.config/manicode/rg" ]]; then
     export CODEBUFF_RG_PATH="\$HOME/.config/manicode/rg"
+elif [[ -x "$PREFIX/bin/rg" ]]; then
+    export CODEBUFF_RG_PATH="$PREFIX/bin/rg"
 fi
 exec "$loader" --library-path "$GLIBC_DIR/lib" \\
     "\$HOME/.config/manicode/freebuff" "\$@"
@@ -661,6 +847,7 @@ main() {
     CACHE=${TMPDIR:-$PREFIX/tmp}/freebuff-native
     SHIM=$CFG/freebuff-spawn-shim.so
     SHIM_SRC=$SCRIPT_DIR/shim/freebuff-spawn-shim.c
+    SHIM_PREBUILT=$SCRIPT_DIR/shim/prebuilt/$PKGARCH/freebuff-spawn-shim.so
     SHIM_TARGET=$PKGARCH-linux-gnu
 
     local mode=install

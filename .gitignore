@@ -1,3 +1,6 @@
 # Test and installer artifacts
 .selftest*/
 *.bak
+
+# Packaging output
+dist/

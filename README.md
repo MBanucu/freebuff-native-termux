@@ -8,9 +8,11 @@ upstream binary, on the Android kernel, with no proot and no ptrace.
 | `freebuff-native-termux.md` | the investigation: why the released binary cannot run as-is, every step, and what was actually observed on an unrooted device |
 | `freebuff-native-termux.sh` | the same steps as an idempotent installer |
 | `shim/freebuff-spawn-shim.c` | the `LD_PRELOAD` object that repairs freebuff's broker re-exec (upstream #1688) |
+| `packaging/termux/build-deb.sh` | builds the Termux `.deb` (installer + prebuilt shim, no 136 MB payload) |
 | `test/installer-test.sh` | the installer test suite the workflow runs |
 | `test/shim-test.sh` | behavioural tests for the shim, with two small C fixtures in `test/shim/` |
-| `.github/workflows/test.yml` | syntax, ShellCheck and tests on x86_64 and arm64 |
+| `test/package-test.sh` | builds a package with a throwaway prefix and inspects its contents |
+| `.github/workflows/test.yml` | syntax, ShellCheck, tests and packaging on x86_64 and arm64 |
 | `upstream-issue-1688.md` | snapshot of the reported upstream bug that the shim works around |
 
 ## Why it does not just run
@@ -27,30 +29,57 @@ standalone executable segfault on every launch.
 ## Usage
 
 ```bash
-./freebuff-native-termux.sh --check     # report status, change nothing
-./freebuff-native-termux.sh --dry-run   # print the plan
-./freebuff-native-termux.sh             # install or repair
-./freebuff-native-termux.sh --from DIR  # import binary/credentials from DIR
+./freebuff-native-termux.sh --check      # report status, change nothing
+./freebuff-native-termux.sh --dry-run    # print the plan
+./freebuff-native-termux.sh --download   # fetch the current release (needs network)
+./freebuff-native-termux.sh              # install or repair from a local copy
+./freebuff-native-termux.sh --from DIR   # import binary/credentials from DIR
 ```
 
-Re-running is the way to repair an install: each step detects what is already in
-place, so a second run reports `0 change(s) applied`.
+`--download` resolves the current version through the npm metadata, verifies the
+archive against its published sha256, and installs `freebuff` and
+`tree-sitter.wasm` (the archive has no ripgrep, so the native `ripgrep` package
+is installed if neither `~/.config/manicode/rg` nor `$PREFIX/bin/rg` exists).
+`--from` remains the offline path; a plain install and `--from` also import
+credentials, while `--download` deliberately leaves an old proot rootfs alone.
 
-The first run needs one thing the script cannot invent — the 136 MB binary, from
-an existing copy (`--from`, or the proot Debian rootfs it defaults to).
+Re-running is the way to repair an install: each step detects what is already in
+place, so a second run reports `0 change(s) applied`. A cached release archive is
+re-used while its checksum still matches.
+
+### Install from the `.deb`
+
+```bash
+bash packaging/termux/build-deb.sh        # -> dist/freebuff-native_<version>_<arch>.deb
+pkg install ./dist/freebuff-native_1.0.0_aarch64.deb
+freebuff-native                           # first run: glibc + release, or --from DIR
+freebuff
+```
+
+The package is about 20 KB — installer, shim source and a prebuilt shim object,
+no 136 MB binary. Its `postinst` finishes setup on its own when the glibc
+runtime is already present; on a first install dpkg's lock prevents installing
+packages from a maintainer script, so it prints the one command to run instead.
+`dpkg -r` removes the wrapper and shim but keeps `~/.config/manicode` (binary,
+credentials, projects); `dpkg -P` also removes the binary and `tree-sitter.wasm`.
 
 ## Tests
 
 ```bash
 bash test/installer-test.sh   # installer: fake Termux prefix, no device needed
 bash test/shim-test.sh        # shim: compiles it with the host cc
+bash test/package-test.sh     # .deb: builds and inspects a package, no root
 ```
 
 Each installer test builds a throwaway prefix under `mktemp -d` with a stub
 glibc loader that asserts the binary it was handed exists, so the suite
 exercises the real installer — shim build, wrapper generation, idempotency,
-`--check`, `--dry-run`, `.bak` behaviour — without touching a device or
-downloading 400 MB.
+`--check`, `--dry-run`, `.bak` behaviour, and the `--download` flow against a
+fake release server — without touching a device or downloading 400 MB.
+
+The package test builds a `.deb` for a throwaway prefix and checks the control
+metadata, the payload paths, that the packed shim is an ELF object, and that the
+maintainer scripts parse.
 
 The shim suite compiles `shim/freebuff-spawn-shim.c` plus a launcher and a fake
 loader, preloads the shim, and checks the argv rewrite, the pass-through for

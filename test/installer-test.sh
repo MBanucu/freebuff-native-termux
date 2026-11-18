@@ -69,6 +69,54 @@ write_fake_binary() { # path
     chmod 700 "$1"
 }
 
+# The installer picks the release by host CPU; keep the fixture in step with it.
+download_target() {
+    case $(uname -m) in
+        aarch64|arm64) printf 'linux-arm64\n' ;;
+        x86_64|amd64)  printf 'linux-x64\n' ;;
+    esac
+}
+
+# A fake release server: one tarball with the two files the real archive holds,
+# and npm-shaped metadata naming its sha256.  install_fake_curl (below) maps the
+# installer's URLs onto this directory, so no network is involved.
+new_fake_release() {
+    local target sum
+    target=$(download_target)
+    FAKE_HTTP=$WORK/http
+    rm -rf "$WORK/release" "$FAKE_HTTP"
+    mkdir -p "$WORK/release" "$FAKE_HTTP"
+    write_fake_binary "$WORK/release/freebuff"
+    printf 'wasm payload for tests\n' >"$WORK/release/tree-sitter.wasm"
+    tar -czf "$FAKE_HTTP/freebuff-$target.tar.gz" -C "$WORK/release" freebuff tree-sitter.wasm
+    sum=$(helper 'sha256_of "$2"' "$FAKE_HTTP/freebuff-$target.tar.gz")
+    printf '{"name":"freebuff","version":"9.9.9","binaryChecksums":{"%s":"%s"}}\n' \
+        "$target" "$sum" >"$FAKE_HTTP/latest"
+}
+
+install_fake_curl() {
+    cat >"$PREFIX_DIR/bin/curl" <<'FAKECURL'
+#!/bin/sh
+# Serve $FAKE_HTTP/<basename of URL>; enough for fetch()'s -fL --retry ... -o.
+out= url=
+while [ $# -gt 0 ]; do
+    case $1 in
+        -o) out=$2; shift 2 ;;
+        -*) shift ;;
+        *) url=$1; shift ;;
+    esac
+done
+[ -n "$out" ] && [ -n "$url" ] || exit 2
+src=$FAKE_HTTP/${url##*/}
+if [ ! -f "$src" ]; then
+    echo "curl: (22) 404 for $url" >&2
+    exit 22
+fi
+cp "$src" "$out"
+FAKECURL
+    chmod +x "$PREFIX_DIR/bin/curl"
+}
+
 FAKE= PREFIX_DIR= HOME_DIR=
 
 new_fake_termux() { # name
@@ -140,6 +188,9 @@ STUB
 run_installer() { # args... against the current fake prefix
     env -i HOME="$HOME_DIR" PREFIX="$PREFIX_DIR" PATH="$PREFIX_DIR/bin:$PATH" \
         TMPDIR="$FAKE/tmp" TERM=dumb \
+        FREEBUFF_METADATA_URL="${FREEBUFF_METADATA_URL:-https://fake.test/freebuff/latest}" \
+        FREEBUFF_RELEASE_BASE="${FREEBUFF_RELEASE_BASE:-https://fake.test/releases}" \
+        FAKE_HTTP="${FAKE_HTTP:-}" \
         bash "$SCRIPT" "$@"
 }
 
@@ -169,6 +220,10 @@ expect_contains "$out" '--from' '--help documents --from'
 out=$(bash "$SCRIPT" --bogus 2>&1)
 expect_status 1 $? 'unknown option exits 1'
 expect_contains "$out" 'unknown option' 'unknown option is reported'
+
+out=$(bash "$SCRIPT" --download --from /tmp 2>&1)
+expect_status 1 $? '--download with --from is rejected'
+expect_contains "$out" 'cannot be combined' 'the conflict is explained'
 
 begin 'refuses environments it must not touch'
 out=$(env -u PREFIX bash "$SCRIPT" 2>&1)
@@ -349,6 +404,26 @@ out=$(helper 'SHIM="$2/freebuff-spawn-shim.so"; SHIM_SRC="$2/no-such-shim.c" ens
 expect_status 0 $? 'ensure_shim succeeds without the source'
 expect_contains "$out" 'no shim source' 'the missing source is reported'
 
+begin 'prebuilt spawn shim'
+new_fake_termux l
+mkdir -p "$WORK/prebuilt"
+printf '\177ELF\002\001\001fake prebuilt shim\n' >"$WORK/prebuilt/freebuff-spawn-shim.so"
+out=$(helper 'SHIM="$2/freebuff-spawn-shim.so"; SHIM_PREBUILT="$3"; SHIM_SRC=/nonexistent; ensure_shim' \
+    "$HOME_DIR/.config/manicode" "$WORK/prebuilt/freebuff-spawn-shim.so" 2>&1)
+expect_status 0 $? 'ensure_shim succeeds with a prebuilt object'
+expect_contains "$out" 'installing the prebuilt spawn shim' 'the prebuilt object is preferred'
+expect_contains "$(cat "$HOME_DIR/.config/manicode/freebuff-spawn-shim.so")" 'fake prebuilt shim' \
+    'the prebuilt object is copied into place'
+
+printf 'not an elf\n' >"$WORK/prebuilt/bad.so"
+out=$(helper 'SHIM="$2/out.so"; SHIM_PREBUILT="$3"; SHIM_SRC=/nonexistent; ensure_shim' \
+    "$HOME_DIR/.config/manicode" "$WORK/prebuilt/bad.so" 2>&1)
+expect_status 0 $? 'ensure_shim survives a non-ELF prebuilt object'
+expect_contains "$out" 'not an ELF object' 'the bad prebuilt object is refused'
+expect_contains "$out" 'no shim source' 'it falls back to the source path'
+[[ ! -e $HOME_DIR/.config/manicode/out.so ]]
+expect_status 0 $? 'nothing is installed from a bad prebuilt object'
+
 begin 'repair'
 new_fake_termux b
 printf 'not an elf at all\n' >"$HOME_DIR/.config/manicode/freebuff"
@@ -366,6 +441,97 @@ rm -f "$HOME_DIR/.config/manicode/freebuff"
 out=$(run_installer 2>&1)
 expect_status 1 $? 'dies when no binary can be found'
 expect_contains "$out" '--from' 'error suggests --from'
+expect_contains "$out" '--download' 'error also suggests --download'
+
+begin '--download'
+new_fake_termux h
+target=$(download_target)
+rm -f "$HOME_DIR/.config/manicode/freebuff" \
+      "$HOME_DIR/.config/manicode/rg" \
+      "$HOME_DIR/.config/manicode/tree-sitter.wasm"
+new_fake_release
+install_fake_curl
+# --download must not silently harvest credentials from an old proot rootfs.
+old=$PREFIX_DIR/var/lib/proot-distro/containers/debian/rootfs/root/.config/manicode
+mkdir -p "$old"
+printf 'old creds\n' >"$old/credentials.json"
+
+out=$(run_installer --download 2>&1)
+expect_status 0 $? '--download install exits 0'
+expect_contains "$out" 'checksum verified' 'the archive checksum is verified'
+expect_contains "$out" 'freebuff 9.9.9 installed' 'the installed version is reported'
+[[ $(head -c 4 "$HOME_DIR/.config/manicode/freebuff") == $'\177ELF' ]]
+expect_status 0 $? 'the downloaded binary is an ELF'
+[[ -f $HOME_DIR/.config/manicode/tree-sitter.wasm ]]
+expect_status 0 $? 'tree-sitter.wasm is installed'
+expect_contains "$(cat "$HOME_DIR/.config/manicode/tree-sitter.wasm")" 'wasm payload' \
+    'the wasm comes from the archive'
+[[ ! -f $HOME_DIR/.config/manicode/credentials.json ]]
+expect_status 0 $? '--download leaves proot credentials alone'
+expect_contains "$out" 'pkg install ripgrep' 'missing ripgrep is a warning, not a failure'
+
+rm -f "$HOME_DIR/.config/manicode/freebuff"
+out=$(run_installer --download 2>&1)
+expect_status 0 $? 'repairing with --download exits 0'
+expect_contains "$out" 'archive already downloaded' 'the cached archive is reused'
+expect_contains "$out" 'tree-sitter.wasm up to date' 'matching wasm is left untouched'
+
+out=$(run_installer --download 2>&1)
+expect_status 0 $? 'a complete --download install re-runs cleanly'
+expect_contains "$out" '0 change(s) applied' 'second run applies no changes'
+
+begin '--download rejects a bad archive'
+cp "$FAKE_HTTP/freebuff-$target.tar.gz" "$WORK/good.tgz"
+printf 'not a tarball\n' >"$FAKE_HTTP/freebuff-$target.tar.gz"
+rm -f "$HOME_DIR/.config/manicode/freebuff" \
+      "$FAKE/tmp/freebuff-native/freebuff-$target.tar.gz"
+out=$(run_installer --download 2>&1)
+expect_status 1 $? 'a checksum mismatch is fatal'
+expect_contains "$out" 'checksum mismatch' 'the mismatch is named'
+[[ ! -f $HOME_DIR/.config/manicode/freebuff ]]
+expect_status 0 $? 'no binary is installed from a bad archive'
+[[ ! -e $FAKE/tmp/freebuff-native/freebuff-$target.tar.gz ]]
+expect_status 0 $? 'the corrupt cache entry is discarded'
+cp "$WORK/good.tgz" "$FAKE_HTTP/freebuff-$target.tar.gz"
+
+begin '--download without the release metadata'
+mv "$FAKE_HTTP/latest" "$FAKE_HTTP/latest.off"
+rm -f "$HOME_DIR/.config/manicode/freebuff"
+out=$(run_installer --download 2>&1)
+expect_status 1 $? 'an unreachable metadata file is fatal'
+expect_contains "$out" '--from' 'the error points at the offline path'
+mv "$FAKE_HTTP/latest.off" "$FAKE_HTTP/latest"
+
+begin '--download --dry-run'
+new_fake_termux i
+rm -f "$HOME_DIR/.config/manicode/freebuff"
+out=$(run_installer --download --dry-run 2>&1)
+expect_status 0 $? '--download --dry-run exits 0'
+expect_contains "$out" 'would download the latest freebuff release' 'the download is announced'
+[[ ! -f $HOME_DIR/.config/manicode/freebuff ]]
+expect_status 0 $? '--download --dry-run writes nothing'
+
+begin 'ripgrep from the Termux prefix'
+new_fake_termux m
+rm -f "$HOME_DIR/.config/manicode/rg"
+printf '#!/bin/sh\n' >"$PREFIX_DIR/bin/rg"
+chmod +x "$PREFIX_DIR/bin/rg"
+out=$(run_installer 2>&1)
+expect_status 0 $? 'install succeeds without $CFG/rg'
+expect_contains "$out" "using ripgrep from $PREFIX_DIR/bin/rg" 'the prefix ripgrep is accepted'
+expect_contains "$(cat "$PREFIX_DIR/bin/freebuff")" \
+    "export CODEBUFF_RG_PATH=\"$PREFIX_DIR/bin/rg\"" \
+    'the wrapper falls back to the prefix ripgrep'
+run_installer --check >/dev/null 2>&1
+expect_status 0 $? '--check accepts ripgrep in the prefix'
+
+begin '--check with no ripgrep at all'
+new_fake_termux n
+run_installer >/dev/null 2>&1
+rm -f "$HOME_DIR/.config/manicode/rg"
+out=$(run_installer --check 2>&1)
+expect_status 1 $? '--check fails without ripgrep'
+expect_contains "$out" 'missing: ripgrep' '--check names the missing ripgrep'
 
 # ------------------------------------------------------------------- result --
 

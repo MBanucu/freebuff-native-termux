@@ -28,23 +28,55 @@ jobs:
           uname -m
 
       - name: Syntax
-        run: bash -n freebuff-native-termux.sh test/installer-test.sh test/shim-test.sh
+        run: bash -n freebuff-native-termux.sh packaging/termux/build-deb.sh test/installer-test.sh test/shim-test.sh test/package-test.sh
 
       - name: ShellCheck (errors are fatal)
         run: |
           if ! command -v shellcheck >/dev/null; then
             sudo apt-get update -qq && sudo apt-get install -y shellcheck
           fi
-          shellcheck -S error freebuff-native-termux.sh test/installer-test.sh test/shim-test.sh
+          shellcheck -S error freebuff-native-termux.sh packaging/termux/build-deb.sh test/installer-test.sh test/shim-test.sh test/package-test.sh
 
       # Advisory: the installer intentionally uses constructs ShellCheck only
       # warns about. Reported, never blocking.
       - name: ShellCheck (warnings, advisory)
         continue-on-error: true
-        run: shellcheck -S warning -f gcc freebuff-native-termux.sh test/installer-test.sh test/shim-test.sh
+        run: shellcheck -S warning -f gcc freebuff-native-termux.sh packaging/termux/build-deb.sh test/installer-test.sh test/shim-test.sh test/package-test.sh
 
       - name: Tests
         run: bash test/installer-test.sh
 
       - name: Shim tests
         run: bash test/shim-test.sh
+
+  package:
+    name: package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build tools
+        run: |
+          if ! command -v clang >/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y clang
+          fi
+          dpkg-deb --version | head -1
+          clang --version | head -1
+
+      - name: Package tests
+        run: bash test/package-test.sh
+
+      # The prebuilt shim is built for the runner's own CPU, which is also the
+      # CPU of the Termux device this package would target.
+      - name: Build the .deb
+        run: bash packaging/termux/build-deb.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: freebuff-native-deb-${{ matrix.os }}
+          path: dist/*.deb
+          if-no-files-found: error
