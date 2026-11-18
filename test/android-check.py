@@ -206,6 +206,24 @@ check("freebuff-native --download" in runner,
 check("https://mbanucu.github.io/freebuff-native-termux/install.sh" in runner,
       "setup uses the published repository")
 
+# --- fdroiddata --------------------------------------------------------------
+
+fdroid = read(ROOT / "fdroiddata" / "io.github.mbanucu.freebuffnative.yml")
+check(fdroid.strip() != "", "the fdroiddata metadata exists")
+for key in ("Categories:", "License: MIT", "SourceCode:", "RepoType: git",
+            "Repo: https://github.com/MBanucu/freebuff-native-termux.git",
+            "Builds:", "subdir: android", "UpdateCheckMode:", "MaintainerNotes:"):
+    check(key in fdroid, "the metadata sets " + key.rstrip(":"))
+
+if code is not None:
+    check("versionCode: " + code.group(1) in fdroid,
+          "the metadata builds versionCode " + code.group(1))
+if version is not None:
+    check("versionName: " + version.group(1) in fdroid,
+          "the metadata builds versionName " + version.group(1))
+    check("commit: android-v" + version.group(1) in fdroid,
+          "the metadata points at the app tag", "commit: android-v" + version.group(1))
+
 # --- fastlane ----------------------------------------------------------------
 
 title = read(FASTLANE / "title.txt").strip()

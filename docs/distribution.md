@@ -9,7 +9,7 @@ why "get it on F-Droid" cannot mean "get the .deb on F-Droid".
 | Signed APT repository (GitHub Pages) | `pkg install freebuff-repo && pkg install freebuff-native` | live, both architectures, updates through `pkg` |
 | Release debs | `pkg install ./freebuff-native_<version>_<arch>.deb` | live on `v1.1.0` |
 | TUR | `pkg install freebuff-native` after `tur-repo` | recipe draft in `tur/`, request open at termux-user-repository/tur#3109 |
-| F-Droid | install an app, then set up Termux | app scaffolded in `android/`, not built or submitted |
+| F-Droid | install an app, then set up Termux | app built, tested on a device, tagged `android-v0.1.0`; metadata ready in `fdroiddata/`, merge request pending |
 | Upstream docs | a Termux line in freebuff's docs | comment on CodebuffAI/freebuff#1688; no PR yet |
 
 ## APT repository
@@ -49,7 +49,9 @@ Before a submission:
 - ~~build it and run it on a device~~: CI compiles it, and `test/android-e2e.py`
   runs four instrumentation tests against a real Termux;
 - ~~add screenshots~~: the e2e run captures them from the device;
-- tag the release and point the update check at tags;
+- ~~tag the release~~: done, `android-v0.1.0`;
+- submit `fdroiddata/io.github.mbanucu.freebuffnative.yml` and the merge-request
+  text from `fdroiddata/README.md` (F-Droid's repository is on GitLab);
 - expect the reviewer to ask why this is an app rather than a script — the
   answer is consent, detection, status, and recovery when Termux blocks
   commands, plus the precedent of Nix-on-Droid downloading its runtime outside

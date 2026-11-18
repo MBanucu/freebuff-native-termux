@@ -1,0 +1,63 @@
+Categories:
+  - Development
+License: MIT
+AuthorName: Michael Banucu
+SourceCode: https://github.com/MBanucu/freebuff-native-termux
+IssueTracker: https://github.com/MBanucu/freebuff-native-termux/issues
+Changelog: https://github.com/MBanucu/freebuff-native-termux/releases
+
+AutoName: freebuff-native
+Summary: Set up Freebuff, natively, in Termux
+Description: |-
+  Freebuff is a coding agent for the terminal. It ships as a single executable
+  built against glibc, so on Android it normally needs a proot container: a
+  second userland, extra memory, and a broken shell for the agent.
+
+  freebuff-native runs the official freebuff binary directly on the Android
+  kernel through the glibc runtime that Termux provides. A small preloaded shim
+  repairs the agent's terminal-command broker, so the shell, git and code search
+  work inside the agent.
+
+  This app is the setup companion. It does not contain freebuff and it does not
+  install anything by itself. It checks that Termux is installed, shows exactly
+  what will be downloaded and how much, and then, with your consent, hands one
+  command to Termux that installs the package and fetches the release. It can
+  later report the state of the install through the installer's own --check, and
+  it explains how to fix the one Termux setting that blocks commands from other
+  apps.
+
+  Requirements: Termux from F-Droid or GitHub (not Google Play), Android 7.0 or
+  newer, about 540 MB of free space, and a connection for the first setup.
+
+  The app has no internet permission, no analytics, no accounts and no
+  background work. It talks to Termux, and only when you press a button.
+
+  The package source, installer, shim and issue notes are at
+  https://github.com/MBanucu/freebuff-native-termux (MIT). freebuff itself is
+  Apache-2.0 and is not redistributed here.
+
+RepoType: git
+Repo: https://github.com/MBanucu/freebuff-native-termux.git
+
+Builds:
+  - versionName: 0.1.0
+    versionCode: 1
+    commit: android-v0.1.0
+    subdir: android
+    gradle:
+      - yes
+
+MaintainerNotes: |-
+  This repository ships two artefacts: the Termux package (tags `v*`, e.g.
+  v1.1.0) and this app (tags `android-v*`). Version checks are manual on
+  purpose, because an automatic tag check would see the package tags as newer
+  app versions. Bump `Builds`, `CurrentVersion` and `CurrentVersionCode` here
+  together with a new `android-v*` tag.
+
+  The app declares no INTERNET permission; the download the consent dialog
+  describes is performed by Termux, not by this app. If a reviewer reads the
+  permission list, that is why.
+
+UpdateCheckMode: None
+CurrentVersion: 0.1.0
+CurrentVersionCode: 1

@@ -21,6 +21,7 @@ upstream binary, on the Android kernel, with no proot and no ptrace.
 | `.github/workflows/test.yml` | syntax, ShellCheck, tests and packaging on x86_64 and arm64 |
 | `.github/workflows/apt-repo.yml` | builds both architectures, signs and publishes the APT repository |
 | `docs/investigation.md` | the investigation: why the released binary cannot run as-is, every step, and what was actually observed on an unrooted device |
+| `fdroiddata/` | ready-to-submit F-Droid metadata and the merge-request text |
 | `docs/distribution.md` | the channels: APT repository, TUR, F-Droid app, upstream link, and what each one still needs |
 | `docs/upstream-issue-1688.md` | snapshot of the reported upstream bug that the shim works around |
 
