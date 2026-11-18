@@ -49,10 +49,14 @@ re-used while its checksum still matches.
 
 ### Install from the `.deb`
 
+Prebuilt packages for aarch64 and x86_64 are attached to the
+[v1.0.0 release](https://github.com/MBanucu/freebuff-native-termux/releases/latest).
+To build one locally:
+
 ```bash
-bash packaging/termux/build-deb.sh        # -> dist/freebuff-native_<version>_<arch>.deb
-pkg install ./dist/freebuff-native_1.0.0_aarch64.deb
-freebuff-native                           # first run: glibc + release, or --from DIR
+bash packaging/termux/build-deb.sh
+pkg install ./dist/freebuff-native_1.0.0_aarch64.deb   # or the x86_64 package
+freebuff-native --download                             # first run: glibc + release
 freebuff
 ```
 
