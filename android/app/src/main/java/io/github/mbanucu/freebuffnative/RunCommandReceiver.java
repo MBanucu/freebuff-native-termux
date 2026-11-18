@@ -17,8 +17,8 @@ public final class RunCommandReceiver extends BroadcastReceiver {
 
     static final String ACTION_RESULT = "io.github.mbanucu.freebuffnative.RUN_COMMAND_RESULT";
 
-    /** Bundle key used by Termux for the result. */
-    private static final String EXTRA_RESULT_BUNDLE = "com.termux.RUN_COMMAND_RESULT_BUNDLE";
+    /** Bundle key used by Termux for the result (PLUGIN_RESULT_BUNDLE). */
+    private static final String EXTRA_RESULT_BUNDLE = "result";
 
     interface Listener {
         void onCommandResult(String text);

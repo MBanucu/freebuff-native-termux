@@ -12,6 +12,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
 import android.widget.Button;
@@ -36,6 +37,7 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
     private static final String TERMUX_HOME = "/data/data/com.termux/files/home";
     private static final String PERMISSION_RUN_COMMAND = "com.termux.permission.RUN_COMMAND";
     private static final int REQUEST_RUN_COMMAND = 1;
+    private static final String TAG = "FreebuffNative";
 
     private static final String CHECK_COMMAND = "freebuff-native --check";
 
@@ -184,6 +186,7 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
 
     private void start(String command, String label, String description, boolean background) {
         if (checkSelfPermission(PERMISSION_RUN_COMMAND) != PackageManager.PERMISSION_GRANTED) {
+            Log.i(TAG, "asking for " + PERMISSION);
             // RUN_COMMAND is a dangerous permission owned by Termux; without it
             // startService throws and the reason looks like a settings problem.
             pending = () -> send(command, label, description, background);
@@ -200,6 +203,8 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
         }
         Runnable next = pending;
         pending = null;
+        Log.i(TAG, "permission " + (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED
+                ? "granted" : "denied"));
         if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED && next != null) {
             next.run();
         } else {
@@ -220,6 +225,10 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
         intent.putExtra("com.termux.RUN_COMMAND_WORKDIR", TERMUX_HOME);
         // Only a background command reports its output back through the
         // PendingIntent; a visible one runs in the Termux window instead.
+        // Current Termux picks the runner; the boolean is the older spelling of
+        // the same choice and is still honoured as a fallback.
+        intent.putExtra("com.termux.RUN_COMMAND_RUNNER",
+                background ? "app-shell" : "terminal-session");
         intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", background);
         intent.putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "0");
         intent.putExtra("com.termux.RUN_COMMAND_COMMAND_LABEL", label);
@@ -228,13 +237,16 @@ public final class MainActivity extends Activity implements RunCommandReceiver.L
 
         try {
             startService(intent);
+            Log.i(TAG, "sent " + (background ? "app-shell" : "terminal-session") + ": " + label);
         } catch (RuntimeException refused) {
+            Log.w(TAG, "Termux refused the command", refused);
             showPermissionHelp();
         }
     }
 
     @Override
     public void onCommandResult(String text) {
+        Log.i(TAG, "result: " + text.split("\n")[0]);
         output.setText(text);
         output.setVisibility(View.VISIBLE);
         refresh();
