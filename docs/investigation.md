@@ -470,10 +470,15 @@ not silently import credentials from it (the binary and settings already in
 
 ```
 $PREFIX/bin/freebuff-native                         launcher
-$PREFIX/lib/freebuff-native/freebuff-native.sh      installer
+$PREFIX/lib/freebuff-native/freebuff-native.sh      installer entry point
+$PREFIX/lib/freebuff-native/lib/…                   installer modules
 $PREFIX/lib/freebuff-native/shim/…                  source + prebuilt object
 $PREFIX/share/doc/freebuff-native/README.md
 ```
+
+The control file, maintainer scripts and launcher are rendered from
+`packaging/termux/templates/*.in`, so the metadata and the scripts are readable
+on their own rather than embedded in the builder.
 
 The shim object is built at package time with `clang --target=<arch>-linux-gnu`
 (the source is freestanding, so no sysroot is needed) and stored under

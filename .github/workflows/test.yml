@@ -28,20 +28,28 @@ jobs:
           uname -m
 
       - name: Syntax
-        run: bash -n freebuff-native-termux.sh packaging/termux/build-deb.sh test/installer-test.sh test/shim-test.sh test/package-test.sh
+        run: |
+          shopt -s nullglob
+          files=(freebuff-native-termux.sh lib/*.sh packaging/termux/*.sh test/*.sh test/installer/*.sh)
+          bash -n "${files[@]}"
 
       - name: ShellCheck (errors are fatal)
         run: |
           if ! command -v shellcheck >/dev/null; then
             sudo apt-get update -qq && sudo apt-get install -y shellcheck
           fi
-          shellcheck -S error freebuff-native-termux.sh packaging/termux/build-deb.sh test/installer-test.sh test/shim-test.sh test/package-test.sh
+          shopt -s nullglob
+          files=(freebuff-native-termux.sh lib/*.sh packaging/termux/*.sh test/*.sh test/installer/*.sh)
+          shellcheck -S error "${files[@]}"
 
       # Advisory: the installer intentionally uses constructs ShellCheck only
       # warns about. Reported, never blocking.
       - name: ShellCheck (warnings, advisory)
         continue-on-error: true
-        run: shellcheck -S warning -f gcc freebuff-native-termux.sh packaging/termux/build-deb.sh test/installer-test.sh test/shim-test.sh test/package-test.sh
+        run: |
+          shopt -s nullglob
+          files=(freebuff-native-termux.sh lib/*.sh packaging/termux/*.sh test/*.sh test/installer/*.sh)
+          shellcheck -S warning -f gcc "${files[@]}"
 
       - name: Tests
         run: bash test/installer-test.sh

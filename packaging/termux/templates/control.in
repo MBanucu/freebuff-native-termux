@@ -1,0 +1,19 @@
+Package: freebuff-native
+Version: @PACKAGE_VERSION@
+Architecture: @ARCH@
+Maintainer: Michael Banucu <23436598+MBanucu@users.noreply.github.com>
+Installed-Size: @INSTALLED_SIZE@
+Depends: bash, tar, curl | wget
+Recommends: ripgrep
+Section: utils
+Priority: optional
+Homepage: https://github.com/MBanucu/freebuff-native-termux
+Description: Native Freebuff CLI for Termux without proot
+ Runs the upstream Freebuff CLI on the Android kernel through Termux's
+ glibc loader.  A small LD_PRELOAD shim repairs the terminal-command broker
+ re-exec (CodebuffAI/freebuff#1688), so the agent's shell, git and code
+ search work natively.
+ .
+ The package installs the wrapper, the prebuilt shim and the installer.
+ The freebuff binary itself is downloaded on first use (freebuff-native
+ --download) or imported from an existing copy (freebuff-native --from DIR).

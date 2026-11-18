@@ -16,28 +16,8 @@ trap 'chmod -R u+w "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT
 PASS=0
 FAIL=0
 
-begin() { printf '\n# %s\n' "$1"; }
-ok()    { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }
-notok() {
-    FAIL=$((FAIL + 1))
-    printf '  FAIL %s\n' "$1"
-    if [[ -n ${2:-} ]]; then printf '       %s\n' "$2"; fi
-}
-
-expect_status() { # want actual description
-    if [[ $1 == "$2" ]]; then ok "$3"; else notok "$3" "wanted exit $1, got $2"; fi
-}
-
-expect_eq() { # want actual description
-    if [[ $1 == "$2" ]]; then ok "$3"; else notok "$3" "wanted '$1', got '$2'"; fi
-}
-
-expect_contains() { # haystack needle description
-    case $1 in
-        *"$2"*) ok "$3" ;;
-        *) notok "$3" "output does not contain '$2'" ;;
-    esac
-}
+# shellcheck source=/dev/null
+source "$HERE/test/assertions.sh"
 
 arch_name() {
     case $(uname -m) in
@@ -96,6 +76,13 @@ expect_contains "$listing" "./${PREFIX#/}/lib/freebuff-native/shim/prebuilt/$ARC
     'the prebuilt shim is packed for the target architecture'
 expect_contains "$listing" "./${PREFIX#/}/share/doc/freebuff-native/README.md" 'README is packed'
 
+# The installer is a thin entry point that sources lib/ next to itself, so the
+# modules have to travel with it.  A package without them installs nothing.
+for module in "$HERE"/lib/*.sh; do
+    name=${module##*/}
+    expect_contains "$listing" "./${PREFIX#/}/lib/freebuff-native/lib/$name" "$name is packed"
+done
+
 extract=$WORK/extract
 mkdir -p "$extract"
 dpkg-deb -x "$DEB" "$extract"
@@ -117,6 +104,18 @@ grep -qF 'SHIM_PREBUILT=$SCRIPT_DIR/shim/prebuilt/$PKGARCH/freebuff-spawn-shim.s
 expect_status 0 $? 'the installer looks for the prebuilt shim at the packed path'
 [[ -f "$LIB/shim/prebuilt/$ARCH/freebuff-spawn-shim.so" ]]
 expect_status 0 $? 'the packed path actually contains the shim'
+
+# Every module the entry point sources must exist under the packed lib/.
+for name in $(sed -n 's/^for module in \(.*\); do$/\1/p' "$LIB/freebuff-native.sh"); do
+    [[ -f "$LIB/lib/$name.sh" ]]
+    expect_status 0 $? "the packed lib/ holds $name.sh"
+done
+
+# --help stops before any device check, so this only proves that the packed
+# entry point finds and sources its modules from the relative path.
+out=$(bash "$LIB/freebuff-native.sh" --help 2>&1)
+expect_status 0 $? 'the packed installer loads its modules'
+expect_contains "$out" '--from' 'the packed installer prints usage'
 
 begin 'maintainer scripts'
 for script in postinst postrm; do

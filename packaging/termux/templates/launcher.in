@@ -1,0 +1,6 @@
+#!@PREFIX@/bin/bash
+# Launcher rendered from templates/launcher.in by build-deb.sh.
+#
+# A launcher, not a symlink: the installer resolves its data directory from
+# BASH_SOURCE, so it must be started under its real path.
+exec "@PREFIX@/lib/freebuff-native/freebuff-native.sh" "$@"

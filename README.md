@@ -3,17 +3,19 @@
 Run the Freebuff CLI natively inside Termux: glibc-runner plus the pristine
 upstream binary, on the Android kernel, with no proot and no ptrace.
 
-| file | what it is |
+| path | what it is |
 | --- | --- |
-| `freebuff-native-termux.md` | the investigation: why the released binary cannot run as-is, every step, and what was actually observed on an unrooted device |
-| `freebuff-native-termux.sh` | the same steps as an idempotent installer |
+| `freebuff-native-termux.sh` | the installer entry point: arguments, paths, main flow |
+| `lib/` | the installer's modules, one per concern: `common`, `termux`, `glibc`, `config`, `release`, `shim`, `wrapper` |
 | `shim/freebuff-spawn-shim.c` | the `LD_PRELOAD` object that repairs freebuff's broker re-exec (upstream #1688) |
 | `packaging/termux/build-deb.sh` | builds the Termux `.deb` (installer + prebuilt shim, no 136 MB payload) |
-| `test/installer-test.sh` | the installer test suite the workflow runs |
+| `packaging/termux/templates/` | control file, maintainer scripts and launcher, rendered by the builder |
+| `test/installer-test.sh` | the installer test runner; cases live in `test/installer/` |
 | `test/shim-test.sh` | behavioural tests for the shim, with two small C fixtures in `test/shim/` |
 | `test/package-test.sh` | builds a package with a throwaway prefix and inspects its contents |
 | `.github/workflows/test.yml` | syntax, ShellCheck, tests and packaging on x86_64 and arm64 |
-| `upstream-issue-1688.md` | snapshot of the reported upstream bug that the shim works around |
+| `docs/investigation.md` | the investigation: why the released binary cannot run as-is, every step, and what was actually observed on an unrooted device |
+| `docs/upstream-issue-1688.md` | snapshot of the reported upstream bug that the shim works around |
 
 ## Why it does not just run
 
@@ -50,18 +52,18 @@ re-used while its checksum still matches.
 ### Install from the `.deb`
 
 Prebuilt packages for aarch64 and x86_64 are attached to the
-[v1.0.0 release](https://github.com/MBanucu/freebuff-native-termux/releases/latest).
+[latest release](https://github.com/MBanucu/freebuff-native-termux/releases/latest).
 To build one locally:
 
 ```bash
 bash packaging/termux/build-deb.sh
-pkg install ./dist/freebuff-native_1.0.0_aarch64.deb   # or the x86_64 package
-freebuff-native --download                             # first run: glibc + release
+pkg install ./dist/freebuff-native_<version>_aarch64.deb   # or the x86_64 package
+freebuff-native --download                                 # first run: glibc + release
 freebuff
 ```
 
-The package is about 20 KB — installer, shim source and a prebuilt shim object,
-no 136 MB binary. Its `postinst` finishes setup on its own when the glibc
+The package is about 20 KB — installer modules, shim source and a prebuilt shim
+object, no 136 MB binary. Its `postinst` finishes setup on its own when the glibc
 runtime is already present; on a first install dpkg's lock prevents installing
 packages from a maintainer script, so it prints the one command to run instead.
 `dpkg -r` removes the wrapper and shim but keeps `~/.config/manicode` (binary,
@@ -99,7 +101,7 @@ every command failed with `terminal command broker protocol response was
 missing`. `dirname(process.execPath)` also pointed the `rg` lookup at
 `$PREFIX/glibc/lib/rg`. Reported upstream as
 [CodebuffAI/freebuff#1688](https://github.com/CodebuffAI/freebuff/issues/1688);
-the snapshot is in `upstream-issue-1688.md`.
+the snapshot is in `docs/upstream-issue-1688.md`.
 
 The installer compiles `shim/freebuff-spawn-shim.c` to
 `~/.config/manicode/freebuff-spawn-shim.so` and the wrapper preloads it. It
@@ -122,6 +124,6 @@ run. The wrapper also exports `CODEBUFF_RG_PATH`, which covers code search.
 
 - Measured from a plain Termux shell, `freebuff --version` is ~640 ms native vs
   ~3.1 s through `proot-distro login debian` (≈4.8×). Launch is still dominated
-  by mapping the 136 MB binary. See section 6 of the notes.
+  by mapping the 136 MB binary. See section 6 of [docs/investigation.md](docs/investigation.md).
 - `aarch64` is the verified target. The `x86_64` path is implemented and tested in
   CI, but has not been run on a device.

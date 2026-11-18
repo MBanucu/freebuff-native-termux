@@ -1,0 +1,27 @@
+#!/bin/sh
+# Package maintainer script rendered from templates/postrm.in by build-deb.sh.
+set -u
+PREFIX=@PREFIX@
+CFG=${HOME:-}/.config/manicode
+
+case "${1:-}" in
+    remove|purge|disappear)
+        if [ -f "$PREFIX/bin/freebuff" ] &&
+           grep -q 'managed by freebuff-native-termux.sh' "$PREFIX/bin/freebuff" 2>/dev/null; then
+            rm -f "$PREFIX/bin/freebuff"
+        fi
+        if [ -n "${HOME:-}" ]; then
+            rm -f "$CFG/freebuff-spawn-shim.so"
+        fi
+        if [ "${1:-}" = purge ] && [ -n "${HOME:-}" ]; then
+            # Keep credentials, settings and projects: they are the user's data.
+            rm -f "$CFG/freebuff" "$CFG/tree-sitter.wasm"
+        fi
+        ;;
+esac
+if [ "${1:-}" = purge ]; then
+    echo "freebuff binary removed; credentials and projects kept in $CFG"
+else
+    echo "freebuff data kept in $CFG (credentials and settings); 'dpkg -P freebuff-native' also removes the binary"
+fi
+exit 0

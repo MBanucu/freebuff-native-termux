@@ -1,0 +1,16 @@
+#!/bin/sh
+# Package maintainer script rendered from templates/postinst.in by build-deb.sh.
+set -u
+PREFIX=@PREFIX@
+GLIBC=$PREFIX/glibc
+
+if [ -e "$GLIBC/lib/libc.so.6" ] && [ -e "$GLIBC/bin/ld.so" ]; then
+    # Download the current release and install the wrapper/shim.  A network
+    # failure must not fail the package installation.
+    "$PREFIX/bin/freebuff-native" --download ||
+        echo "freebuff-native: setup did not finish; re-run 'freebuff-native --download' when online"
+else
+    echo "freebuff-native: the glibc runtime is not installed yet."
+    echo "  Run 'freebuff-native --download' to install it, fetch freebuff, and finish setup."
+fi
+exit 0
