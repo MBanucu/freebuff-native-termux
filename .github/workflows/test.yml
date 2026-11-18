@@ -60,6 +60,9 @@ jobs:
       - name: Repository tests
         run: bash test/repo-test.sh
 
+      - name: TUR recipe tests
+        run: bash test/tur-test.sh
+
   package:
     name: package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

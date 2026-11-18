@@ -11,9 +11,12 @@ upstream binary, on the Android kernel, with no proot and no ptrace.
 | `packaging/termux/build-deb.sh` | builds the Termux `.deb` (installer + prebuilt shim, no 136 MB payload) |
 | `packaging/termux/templates/` | control file, maintainer scripts and launcher, rendered by the builder |
 | `packaging/termux/repo/` | APT repository builder, `freebuff-repo` setup package, Pages index |
+| `tur/freebuff-native/build.sh` | TUR recipe draft, ready to copy into a TUR pull request |
 | `test/installer-test.sh` | the installer test runner; cases live in `test/installer/` |
 | `test/shim-test.sh` | behavioural tests for the shim, with two small C fixtures in `test/shim/` |
 | `test/package-test.sh` | builds a package with a throwaway prefix and inspects its contents |
+| `test/repo-test.sh` | apt indexes, checksums, signatures and the setup package |
+| `test/tur-test.sh` | runs the TUR recipe's install step against a throwaway prefix |
 | `.github/workflows/test.yml` | syntax, ShellCheck, tests and packaging on x86_64 and arm64 |
 | `.github/workflows/apt-repo.yml` | builds both architectures, signs and publishes the APT repository |
 | `docs/investigation.md` | the investigation: why the released binary cannot run as-is, every step, and what was actually observed on an unrooted device |
@@ -96,6 +99,7 @@ bash test/installer-test.sh   # installer: fake Termux prefix, no device needed
 bash test/shim-test.sh        # shim: compiles it with the host cc
 bash test/package-test.sh     # .deb: builds and inspects a package, no root
 bash test/repo-test.sh        # apt repo: indexes, Release, signing, freebuff-repo
+bash test/tur-test.sh         # TUR recipe: its install step, in a throwaway prefix
 ```
 
 Each installer test builds a throwaway prefix under `mktemp -d` with a stub
