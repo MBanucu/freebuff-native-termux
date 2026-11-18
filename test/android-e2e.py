@@ -22,6 +22,7 @@ PACKAGE = "io.github.mbanucu.freebuffnative"
 TEST_PACKAGE = PACKAGE + ".test"
 RUNNER = TEST_PACKAGE + "/androidx.test.runner.AndroidJUnitRunner"
 TEST_CLASS = PACKAGE + ".SetupFlowTest"
+DENIED_CLASS = PACKAGE + ".DeniedPermissionTest"
 REMOTE_SHOTS = "/sdcard/Android/data/" + PACKAGE + "/files/screenshots"
 
 
@@ -61,6 +62,21 @@ class Device:
                 raise
             self.shell("pm uninstall " + package)
             return self.adb("install", str(path))
+
+
+def instrument(device, class_name):
+    """Run one test class; return (ok, output). The runner output is verbose."""
+    out = device.shell("am instrument -w -r -e class %s %s" % (class_name, RUNNER))
+    passed = re.search(r"OK \((\d+) tests?\)", out)
+    if passed and "FAILURES!!!" not in out and "INSTRUMENTATION_FAILED" not in out:
+        say("  %s: %s test(s) passed" % (class_name.rsplit(".", 1)[-1], passed.group(1)))
+        return True, out
+    say("  %s: failed" % class_name.rsplit(".", 1)[-1])
+    for line in out.splitlines():
+        if line.startswith(("junit.framework", "java.lang", "at io.github",
+                            "INSTRUMENTATION_RESULT", "INSTRUMENTATION_CODE", "shortMsg")):
+            say("    " + line)
+    return False, out
 
 
 def adb_devices():
@@ -113,18 +129,20 @@ def main():
         device.install(test_apk, TEST_PACKAGE)
         device.shell("pm grant %s com.termux.permission.RUN_COMMAND" % PACKAGE)
 
-        say("instrument")
-        out = device.shell(
-            "am instrument -w -r -e class %s %s" % (TEST_CLASS, RUNNER))
-        print(out, end="" if out.endswith("\n") else "\n")
+        say("instrument: setup flow")
+        ok_flow, _ = instrument(device, TEST_CLASS)
 
-        passed = re.search(r"OK \((\d+) tests?\)", out)
-        failed = "FAILURES!!!" in out or "INSTRUMENTATION_FAILED" in out
-        if not passed or failed:
+        # Revoking a dangerous permission kills the app process, and the runner
+        # lives there, so the denial path is a separate run with the permission
+        # revoked before it starts.
+        say("instrument: denied permission")
+        device.shell("pm revoke %s com.termux.permission.RUN_COMMAND" % PACKAGE)
+        ok_denied, _ = instrument(device, DENIED_CLASS)
+        device.shell("pm grant %s com.termux.permission.RUN_COMMAND" % PACKAGE)
+        if not (ok_flow and ok_denied):
             say("\ndiagnostics: last 40 log lines")
             say(device.shell("logcat -d -t 40 -s FreebuffNative:I AndroidRuntime:E"))
             return 1
-        say("\n%s test(s) passed" % passed.group(1))
 
         if args.screenshots:
             shots = Path(args.screenshots)

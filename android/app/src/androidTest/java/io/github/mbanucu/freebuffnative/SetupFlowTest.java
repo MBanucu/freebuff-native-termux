@@ -89,29 +89,6 @@ public final class SetupFlowTest {
         shot("03-check.png");
     }
 
-    @Test
-    public void dDeniedPermissionIsExplainedAndRecovered() throws Exception {
-        device.executeShellCommand("pm revoke " + PACKAGE + " " + PERMISSION);
-        device.executeShellCommand("am force-stop " + PACKAGE);
-        device.executeShellCommand("am start -W -n " + PACKAGE + "/.MainActivity");
-        assertTrue("the app is back", device.wait(Until.hasObject(By.text("Check setup")), 20_000));
-
-        device.findObject(By.text("Check setup")).click();
-        UiObject2 allow = device.wait(
-                Until.findObject(By.text(Pattern.compile("(?i)allow"))), SHORT);
-        assertNotNull("Android asks for Termux's permission", allow);
-
-        device.pressBack();
-        assertTrue("the app explains the denial",
-                device.wait(Until.hasObject(By.text("Permission needed")), SHORT));
-        device.findObject(By.text("CLOSE")).click();
-
-        device.executeShellCommand("pm grant " + PACKAGE + " " + PERMISSION);
-        device.findObject(By.text("Check setup")).click();
-        assertNotNull("the check works after the grant",
-                device.wait(Until.findObject(By.textContains("exit code 0")), LONG));
-    }
-
     private void shot(String name) throws Exception {
         File dir = new File(InstrumentationRegistry.getInstrumentation()
                 .getTargetContext().getExternalFilesDir(null), "screenshots");
