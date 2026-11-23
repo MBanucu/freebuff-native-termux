@@ -119,7 +119,10 @@ ensure_wrapper() {
 
 verify_installation() {
     local out
-    if out=$(timeout 120 "$WRAPPER" --version 2>&1); then
+    # No controlling terminal for the health check: the TUI-capable binary
+    # otherwise stops on terminal I/O when the install runs inside a real
+    # Termux session, leaving dpkg half-configured forever.
+    if out=$(timeout -k 5 120 "$WRAPPER" --version </dev/null 2>&1); then
         ok "freebuff --version -> $out"
         return 0
     fi
