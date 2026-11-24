@@ -1,0 +1,12 @@
+# Copy this file to local.properties (which is gitignored), or export
+# ANDROID_HOME instead.  On Termux the simplest path is the wrapper:
+#
+#     tools/termux-build.sh assembleDebug
+#
+# which resolves $HOME/android-sdk and the bionic aapt2 for you.
+
+# Termux's default SDK location:
+sdk.dir=/data/data/com.termux/files/home/android-sdk
+
+# Linux/macOS example:
+# sdk.dir=/home/you/Android/Sdk

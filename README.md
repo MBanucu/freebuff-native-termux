@@ -13,6 +13,8 @@ upstream binary, on the Android kernel, with no proot and no ptrace.
 | `packaging/termux/repo/` | APT repository builder, `freebuff-repo` setup package, Pages index |
 | `tur/freebuff-native/build.sh` | TUR recipe draft, ready to copy into a TUR pull request |
 | `android/` | setup companion app for an F-Droid listing: detects Termux, consents, sends one command; built in CI and tested on a device |
+| `tools/termux-build.sh` | first-run Android build on Termux: resolves the SDK, points AGP at the bionic aapt2, runs the wrapper |
+| `docs/termux-build.md` | Termux build notes, toolchain decision and configuration-cache measurements |
 | `test/installer-test.sh` | the installer test runner; cases live in `test/installer/` |
 | `test/shim-test.sh` | behavioural tests for the shim, with two small C fixtures in `test/shim/` |
 | `test/package-test.sh` | builds a package with a throwaway prefix and inspects its contents |
@@ -24,6 +26,19 @@ upstream binary, on the Android kernel, with no proot and no ptrace.
 | `fdroiddata/` | ready-to-submit F-Droid metadata and the merge-request text |
 | `docs/distribution.md` | the channels: APT repository, TUR, F-Droid app, upstream link, and what each one still needs |
 | `docs/upstream-issue-1688.md` | snapshot of the reported upstream bug that the shim works around |
+
+## Android setup app
+
+The F-Droid companion app lives in `android/`. On Termux, build it with:
+
+```bash
+tools/termux-build.sh assembleDebug assembleDebugAndroidTest
+```
+
+The script finds `$HOME/android-sdk`, exports `ANDROID_HOME`, and uses Termux's
+`aapt2` because the Maven one is glibc. See
+[docs/termux-build.md](docs/termux-build.md) for the direct-Gradle path, the
+version catalog, and the toolchain rationale.
 
 ## Why it does not just run
 
