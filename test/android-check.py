@@ -173,6 +173,14 @@ check("gradle-version:" not in workflow,
 check("gradle/actions/wrapper-validation@" in workflow,
       "CI validates the committed wrapper jar")
 
+termux_build = ROOT / "tools" / "termux-build.sh"
+termux_script = read(termux_build)
+check(termux_script.startswith("#!/bin/sh\n") and termux_build.stat().st_mode & 0o111,
+      "the Termux build script runs directly with a portable shebang",
+      termux_script.splitlines()[0] if termux_script else "missing")
+check('exec bash "$0" "$@"' in termux_script,
+      "the Termux build script re-execs bash for its arrays")
+
 check(not re.search(r"(?<!androidTest)\bimplementation\s*\(", gradle),
       "the app has no library dependencies", "found an implementation() line")
 runtime = [line.strip() for line in gradle.splitlines()

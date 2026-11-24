@@ -1,4 +1,11 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# shellcheck shell=bash
+# /bin/sh exists on both Termux and Linux; re-exec bash because the script
+# below uses bash arrays.  Termux has no /usr/bin/env, so a portable shebang
+# cannot be '#!/usr/bin/env bash'.
+if [ -z "${BASH_VERSION:-}" ]; then
+    exec bash "$0" "$@"
+fi
 #
 # First-run build entry point for Termux.
 #
@@ -65,6 +72,16 @@ fi
 
 printf 'Using Android SDK %s\n' "$sdk" >&2
 cd "$android"
+# Do not add a second --console when the caller already chose one; Gradle
+# rejects duplicate options such as the --console=plain in the usage above.
+has_console=0
+for arg in "${args[@]}"; do
+    case $arg in
+        --console | --console=*) has_console=1 ;;
+    esac
+done
+gradle_args=("-Dandroid.home=$sdk")
+[ "$has_console" = 1 ] || gradle_args=(--console=plain "${gradle_args[@]}")
 # -Dandroid.home is AGP's documented system property.  Pass it explicitly so a
 # reused Gradle daemon cannot hide the environment this script just resolved.
-exec ./gradlew --console=plain "-Dandroid.home=$sdk" "${args[@]}"
+exec ./gradlew "${gradle_args[@]}" "${args[@]}"
