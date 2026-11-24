@@ -34,8 +34,8 @@ jobs:
     timeout-minutes: 30
     env:
       EMULATOR_OUT: ${{ github.workspace }}/out/emulator
-      # On push there is no input; null == false is false, so "required".
-      NATIVE_CHECK: ${{ inputs.native_check == false && 'skip' || 'required' }}
+      # On push there is no input; null == 'false' is false, so "required".
+      NATIVE_CHECK: ${{ github.event.inputs.native_check == 'false' && 'skip' || 'required' }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
