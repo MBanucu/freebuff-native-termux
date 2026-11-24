@@ -1,0 +1,27 @@
+# Single source of truth for the Android build.  F-Droid builds the wrapper
+# this file ships with, so change the wrapper, the workflow and the fdroiddata
+# notes together with `agp`.
+#
+# The app itself has no runtime dependencies; the four androidx.test libraries
+# are androidTest-only and never enter the APK.
+
+[versions]
+agp = "8.7.3"
+compileSdk = "35"
+minSdk = "24"
+targetSdk = "35"
+appVersionCode = "1"
+appVersionName = "0.1.0"
+androidx-test-runner = "1.6.2"
+androidx-test-rules = "1.6.1"
+androidx-test-ext-junit = "1.2.1"
+androidx-test-uiautomator = "2.3.0"
+
+[libraries]
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-runner" }
+androidx-test-rules = { module = "androidx.test:rules", version.ref = "androidx-test-rules" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-test-ext-junit" }
+androidx-test-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "androidx-test-uiautomator" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }

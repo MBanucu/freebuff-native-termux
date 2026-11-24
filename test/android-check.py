@@ -56,6 +56,8 @@ expected = [
     ANDROID / "build.gradle.kts",
     ANDROID / "gradle.properties",
     ANDROID / "gradle" / "wrapper" / "gradle-wrapper.properties",
+    ANDROID / "gradle" / "libs.versions.toml",
+    ANDROID / "local.properties.example",
     ANDROID / "app" / "build.gradle.kts",
     APP / "AndroidManifest.xml",
     APP / "res" / "values" / "strings.xml",
@@ -118,7 +120,16 @@ if manifest is not None:
 # --- gradle ------------------------------------------------------------------
 
 gradle = read(ANDROID / "app" / "build.gradle.kts")
+catalog = read(ANDROID / "gradle" / "libs.versions.toml")
 package = re.search(r'namespace\s*=\s*"([^"]+)"', gradle)
+
+
+def catalog_version(name):
+    match = re.search(
+        r"^" + re.escape(name) + r'\s*=\s*"([^"]+)"', catalog, re.MULTILINE)
+    return match.group(1) if match else None
+
+
 app_id = re.search(r'applicationId\s*=\s*"([^"]+)"', gradle)
 check(package is not None and package.group(1) == "io.github.mbanucu.freebuffnative",
       "the namespace is the app id's package",
@@ -128,19 +139,47 @@ check(app_id is not None and package is not None
       "the application id matches the namespace",
       None if app_id is None else app_id.group(1))
 
-code = re.search(r"versionCode\s*=\s*(\d+)", gradle)
-version = re.search(r'versionName\s*=\s*"([^"]+)"', gradle)
-check(code is not None, "the build sets a versionCode")
-check(version is not None, "the build sets a versionName")
+code = catalog_version("appVersionCode")
+version = catalog_version("appVersionName")
+check(catalog.strip() != "", "the version catalog exists")
+check(code is not None, "the catalog sets a versionCode", code)
+check(version is not None, "the catalog sets a versionName", version)
 
-sdk = re.search(r"compileSdk\s*=\s*(\d+)", gradle)
-target = re.search(r"targetSdk\s*=\s*(\d+)", gradle)
-check(sdk is not None and int(sdk.group(1)) >= 34,
-      "compileSdk is current enough for F-Droid",
-      None if sdk is None else sdk.group(1))
-check(target is not None and int(target.group(1)) >= 34,
-      "targetSdk is current enough for F-Droid",
-      None if target is None else target.group(1))
+sdk = catalog_version("compileSdk")
+target = catalog_version("targetSdk")
+check(sdk is not None and sdk.isdigit() and int(sdk) >= 34,
+      "compileSdk is current enough for F-Droid", sdk)
+check(target is not None and target.isdigit() and int(target) >= 34,
+      "targetSdk is current enough for F-Droid", target)
+
+check('id = "com.android.application"' in catalog
+      and 'version.ref = "agp"' in catalog,
+      "the catalog exposes the Android plugin alias")
+check("alias(libs.plugins.android.application)" in gradle,
+      "the app applies the plugin through the catalog")
+for module in ("androidx.test:runner", "androidx.test:rules",
+               "androidx.test.ext:junit", "androidx.test.uiautomator:uiautomator"):
+    check(module in catalog, "the catalog pins " + module)
+
+wrapper = read(ANDROID / "gradle" / "wrapper" / "gradle-wrapper.properties")
+check(re.search(r"^distributionSha256Sum=[0-9a-f]{64}$", wrapper,
+                re.MULTILINE) is not None,
+      "the wrapper pins the distribution checksum")
+workflow = read(ROOT / ".github" / "workflows" / "android.yml")
+check("gradle-version: '8.9'" not in workflow,
+      "CI does not hard-code the wrapper version")
+check("gradle-version:" not in workflow,
+      "CI follows the wrapper version")
+check("gradle/actions/wrapper-validation@" in workflow,
+      "CI validates the committed wrapper jar")
+
+termux_build = ROOT / "tools" / "termux-build.sh"
+termux_script = read(termux_build)
+check(termux_script.startswith("#!/bin/sh\n") and termux_build.stat().st_mode & 0o111,
+      "the Termux build script runs directly with a portable shebang",
+      termux_script.splitlines()[0] if termux_script else "missing")
+check('exec bash "$0" "$@"' in termux_script,
+      "the Termux build script re-execs bash for its arrays")
 
 check(not re.search(r"(?<!androidTest)\bimplementation\s*\(", gradle),
       "the app has no library dependencies", "found an implementation() line")
@@ -156,9 +195,9 @@ check((ANDROID / "app" / "src" / "androidTest" / "java" / "io" / "github" /
       "the end-to-end test source exists")
 
 if code is not None:
-    changelog = FASTLANE / "changelogs" / (code.group(1) + ".txt")
+    changelog = FASTLANE / "changelogs" / (code + ".txt")
     check(changelog.is_file(),
-          "a changelog exists for versionCode " + code.group(1),
+          "a changelog exists for versionCode " + code,
           str(changelog.relative_to(ROOT)))
 
 # --- resources ---------------------------------------------------------------
@@ -230,13 +269,13 @@ check(summary.is_file()
 check("gradle:\n      - yes" in fdroid, "the build uses gradle")
 
 if code is not None:
-    check("versionCode: " + code.group(1) in fdroid,
-          "the metadata builds versionCode " + code.group(1))
+    check("versionCode: " + code in fdroid,
+          "the metadata builds versionCode " + code)
 if version is not None:
-    check("versionName: " + version.group(1) in fdroid,
-          "the metadata builds versionName " + version.group(1))
-    check("commit: android-v" + version.group(1) in fdroid,
-          "the metadata points at the app tag", "commit: android-v" + version.group(1))
+    check("versionName: " + version in fdroid,
+          "the metadata builds versionName " + version)
+    check("commit: android-v" + version in fdroid,
+          "the metadata points at the app tag", "commit: android-v" + version)
 
 # --- fastlane ----------------------------------------------------------------
 

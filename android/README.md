@@ -38,17 +38,27 @@ submission is a tagged release and the `fdroiddata` merge request.
 
 ## Build
 
-Requirements: JDK 17 and an Android SDK with platform 35 and build-tools 35.
+Versions live in `gradle/libs.versions.toml` (AGP 8.7.3, Gradle wrapper 8.9,
+compileSdk 35). On Termux, the wrapper resolves the SDK and the bionic aapt2:
 
 ```bash
+tools/termux-build.sh assembleDebug assembleDebugAndroidTest
+```
+
+Without the script, export the SDK yourself (or copy
+`local.properties.example` to `local.properties`):
+
+```bash
+export ANDROID_HOME="$HOME/android-sdk"
 cd android
-gradle wrapper --gradle-version 8.9          # once; the wrapper jar is not committed
 ./gradlew assembleDebug assembleDebugAndroidTest
 ```
 
 The results are `app-debug.apk` and `app-debug-androidTest.apk`. The shipped app
 has no library dependencies; the test APK carries the AndroidX test runner and
-UI Automator, and nothing from it enters the app.
+UI Automator, and nothing from it enters the app. See
+`../docs/termux-build.md` for the toolchain decision and configuration-cache
+measurements.
 
 To install on a device:
 
@@ -90,7 +100,10 @@ android/
 ├── app/src/androidTest/java/…/SetupFlowTest.java  the end-to-end test
 ├── app/src/main/res/…                   strings, theme, vector icon
 ├── fastlane/metadata/android/en-US/     F-Droid listing text and changelog
-└── app/build.gradle.kts                 versionCode/versionName, no deps
+├── gradle/libs.versions.toml            the only place AGP/SDK/version/test deps live
+├── gradle/wrapper/                      Gradle 8.9 wrapper, pinned by sha256
+├── local.properties.example             SDK location template (local.properties is gitignored)
+└── app/build.gradle.kts                 reads the catalog, no runtime deps
 ```
 
 ## F-Droid submission checklist

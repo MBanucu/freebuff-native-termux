@@ -1,5 +1,6 @@
 // The Android Gradle Plugin is the only build-time dependency; the app itself
-// has none, so an F-Droid build needs nothing but the SDK.
+// has none, so an F-Droid build needs nothing but the SDK.  Versions live in
+// gradle/libs.versions.toml.
 plugins {
-    id("com.android.application") version "8.7.3" apply false
+    alias(libs.plugins.android.application) apply false
 }
