@@ -2,6 +2,9 @@
 .selftest*/
 *.bak
 
+# Emulator e2e output (logs, screenshots, instrumentation)
+out/
+
 # Packaging output
 dist/
 

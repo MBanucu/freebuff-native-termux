@@ -8,8 +8,10 @@ under test: install the APKs, run `am instrument`, collect the screenshots.
 
     python3 test/android-e2e.py [--apk PATH] [--test-apk PATH]
                                 [--serial SERIAL] [--screenshots DIR]
+                                [--require-device] [--skip-native]
 
 Exit codes: 0 pass, 1 failure, 77 skip (no adb, no device, no Termux, no APKs).
+With --require-device a skip is reported as a failure instead of 77.
 """
 
 import argparse
@@ -23,6 +25,13 @@ TEST_PACKAGE = PACKAGE + ".test"
 RUNNER = TEST_PACKAGE + "/androidx.test.runner.AndroidJUnitRunner"
 TEST_CLASS = PACKAGE + ".SetupFlowTest"
 DENIED_CLASS = PACKAGE + ".DeniedPermissionTest"
+# The two methods that need no freebuff-native installation.  They are the
+# fallback when the native download does not fit the hosted job's budget; the
+# native method is then a recorded follow-up, never a pass.
+UI_ONLY_CLASSES = ",".join((
+    TEST_CLASS + "#aMainScreenOffersTheThreeActions",
+    TEST_CLASS + "#bConsentDialogStatesTheDownload",
+))
 REMOTE_SHOTS = "/sdcard/Android/data/" + PACKAGE + "/files/screenshots"
 
 
@@ -64,18 +73,18 @@ class Device:
             return self.adb("install", str(path))
 
 
-def instrument(device, class_name):
+def instrument(device, class_name, label=None):
     """Run one test class; return (ok, output). The runner output is verbose."""
-    out = device.shell("am instrument -w -r -e class %s %s" % (class_name, RUNNER))
+    name = label or class_name.rsplit(".", 1)[-1]
+    out = device.shell("am instrument -w -r -e class '%s' %s" % (class_name, RUNNER))
     passed = re.search(r"OK \((\d+) tests?\)", out)
     if passed and "FAILURES!!!" not in out and "INSTRUMENTATION_FAILED" not in out:
-        say("  %s: %s test(s) passed" % (class_name.rsplit(".", 1)[-1], passed.group(1)))
+        say("  %s: %s test(s) passed" % (name, passed.group(1)))
         return True, out
-    say("  %s: failed" % class_name.rsplit(".", 1)[-1])
-    for line in out.splitlines():
-        if line.startswith(("junit.framework", "java.lang", "at io.github",
-                            "INSTRUMENTATION_RESULT", "INSTRUMENTATION_CODE", "shortMsg")):
-            say("    " + line)
+    say("  %s: failed" % name)
+    # Print the whole runner output, not a filtered summary: this is what the
+    # workflow uploads as instrumentation evidence when the job fails.
+    say(out)
     return False, out
 
 
@@ -100,6 +109,11 @@ def main():
                         default="android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk")
     parser.add_argument("--serial", default=None)
     parser.add_argument("--screenshots", default=None)
+    parser.add_argument("--require-device", action="store_true",
+                        help="treat a skip (no device, Termux or APK) as a failure")
+    parser.add_argument("--skip-native", action="store_true",
+                        help="run only the UI and consent methods; the native "
+                             "install check is then a recorded follow-up")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent.parent
@@ -129,8 +143,14 @@ def main():
         device.install(test_apk, TEST_PACKAGE)
         device.shell("pm grant %s com.termux.permission.RUN_COMMAND" % PACKAGE)
 
-        say("instrument: setup flow")
-        ok_flow, _ = instrument(device, TEST_CLASS)
+        say("instrument: setup flow" + (" (UI and consent only)" if args.skip_native else ""))
+        ok_flow, _ = instrument(
+            device,
+            UI_ONLY_CLASSES if args.skip_native else TEST_CLASS,
+            "SetupFlowTest (UI/consent)" if args.skip_native else None)
+        if args.skip_native:
+            say("FOLLOW-UP: %s#cCheckReportsThroughTermux was not run; "
+                "the native install check is not covered by this run" % TEST_CLASS)
 
         # Revoking a dangerous permission kills the app process, and the runner
         # lives there, so the denial path is a separate run with the permission
@@ -139,11 +159,6 @@ def main():
         device.shell("pm revoke %s com.termux.permission.RUN_COMMAND" % PACKAGE)
         ok_denied, _ = instrument(device, DENIED_CLASS)
         device.shell("pm grant %s com.termux.permission.RUN_COMMAND" % PACKAGE)
-        if not (ok_flow and ok_denied):
-            say("\ndiagnostics: last 40 log lines")
-            say(device.shell("logcat -d -t 40 -s FreebuffNative:I AndroidRuntime:E"))
-            return 1
-
         if args.screenshots:
             shots = Path(args.screenshots)
             shots.mkdir(parents=True, exist_ok=True)
@@ -153,9 +168,17 @@ def main():
                 data = device.adb("exec-out", "cat", REMOTE_SHOTS + "/" + name, binary=True)
                 (shots / name).write_bytes(data)
                 say("  shot " + str(shots / name))
+
+        if not (ok_flow and ok_denied):
+            say("\ndiagnostics: last 40 log lines")
+            say(device.shell("logcat -d -t 40 -s FreebuffNative:I AndroidRuntime:E"))
+            return 1
         return 0
 
     except Skip as reason:
+        if args.require_device:
+            say("FAIL: %s (--require-device: a skip is a failure)" % reason)
+            return 1
         say("SKIP: " + str(reason))
         return 77
     except RuntimeError as error:

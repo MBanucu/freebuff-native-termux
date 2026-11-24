@@ -7,8 +7,10 @@ to Termux through `RUN_COMMAND`.
 
 **Status: builds and runs.** CI compiles the APK and the test APK; the
 instrumentation test has run on an aarch64 device against a real Termux, and the
-screenshots in `fastlane/` come from that run. What remains before an F-Droid
-submission is a tagged release and the `fdroiddata` merge request.
+screenshots in `fastlane/` come from that run. Post-merge CI also runs the UI,
+consent and denied-permission tests on an API 35 x86_64 emulator and attempts
+the native install check there. What remains before an F-Droid submission is a
+tagged release and the `fdroiddata` merge request.
 
 ## What it does
 
@@ -89,6 +91,16 @@ RUN_COMMAND round trip through Termux), then revokes the permission and runs
 `DeniedPermissionTest` in a second pass, because revoking kills the app process
 and the runner with it. Every wait is an accessibility event; the whole run takes
 about 20 seconds, most of which is installing the APKs.
+
+### Emulator coverage
+
+`.github/workflows/emulator-e2e.yml` runs the same flow after a merge on an API
+35 x86_64 AVD: a debuggable Termux with `allow-external-apps=true`, the x86_64
+`freebuff-native` package, and `test/android-e2e.py --screenshots`. It is
+**compatibility coverage, not the release gate**; the exact aarch64 device run
+remains the verified target. The job fails on a missing emulator, a missing
+Termux or exit 77, and records the native check as a follow-up when the 540 MB
+download does not fit its budget.
 
 ## Layout
 
