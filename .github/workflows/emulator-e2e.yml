@@ -1,0 +1,108 @@
+name: emulator-e2e
+
+# Post-merge proof that a merged change still builds, installs and drives the
+# setup app on a real Android runtime. This is x86_64 compatibility coverage,
+# not the release gate: the AVD is google_apis x86_64 with Termux's x86_64
+# bootstrap, while the verified target is aarch64 on the self-hosted Blackview
+# XPLORE 2. The exact-device aarch64 run remains the release gate.
+#
+# The job fails on a missing emulator, a missing Termux, a refused package or
+# exit 77 from test/android-e2e.py; a skip is never green. See "Emulator
+# coverage" in README.md.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      native_check:
+        description: 'Install freebuff-native and run cCheckReportsThroughTermux (about 540 MB)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emulator-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: API 35 x86_64 setup flow
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EMULATOR_OUT: ${{ github.workspace }}/out/emulator
+      # On push there is no input; null == 'false' is false, so "required".
+      NATIVE_CHECK: ${{ github.event.inputs.native_check == 'false' && 'skip' || 'required' }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK
+        run: |
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          manager=$(command -v sdkmanager || echo "$sdk/cmdline-tools/latest/bin/sdkmanager")
+          yes | "$manager" --licenses >/dev/null 2>&1 || true
+          "$manager" "platforms;android-35" "build-tools;35.0.0" "platform-tools" >/dev/null
+          echo "ANDROID_HOME=$sdk" >>"$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk" >>"$GITHUB_ENV"
+
+      # The 117 MB universal APK is pinned by sha256; the package is a 21 KB
+      # release asset fetched fresh (the API digest is checked).  Do not cache
+      # the AVD or the 540 MB installer download: disk is the tight resource.
+      - name: Cache the Termux debug APK
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/freebuff-native-e2e/termux-app_v0.118.3+github-debug_universal.apk
+          key: termux-app-v0.118.3-github-debug-universal
+
+      # The KVM rule the emulator action needs on GitHub's Linux runners.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot API 35 and run the setup e2e
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 3072M
+          avd-name: freebuff-native-api35
+          emulator-boot-timeout: 600
+          disable-animations: true
+          emulator-options: >-
+            -no-window -no-snapshot -gpu swiftshader_indirect -noaudio
+            -no-boot-anim -camera-back none -camera-front none
+          script: |
+            if [ "$NATIVE_CHECK" = "skip" ]; then
+              bash ci/emulator-e2e.sh --skip-native-check
+            else
+              bash ci/emulator-e2e.sh
+            fi
+
+      # A missing emulator, a missing Termux, a failed install or a failed
+      # instrumentation run must leave the logs, instrumentation output and
+      # screenshots inspectable.
+      - name: Upload instrumentation output and screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-e2e-${{ github.run_id }}
+          path: out/emulator/
+          if-no-files-found: warn
+          retention-days: 7

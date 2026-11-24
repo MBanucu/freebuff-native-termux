@@ -13,6 +13,7 @@ upstream binary, on the Android kernel, with no proot and no ptrace.
 | `packaging/termux/repo/` | APT repository builder, `freebuff-repo` setup package, Pages index |
 | `tur/freebuff-native/build.sh` | TUR recipe draft, ready to copy into a TUR pull request |
 | `android/` | setup companion app for an F-Droid listing: detects Termux, consents, sends one command; built in CI and tested on a device |
+| `ci/emulator-e2e.sh` | hosted x86_64 emulator e2e: Termux, the package, the app and its instrumentation tests |
 | `tools/termux-build.sh` | first-run Android build on Termux: resolves the SDK, points AGP at the bionic aapt2, runs the wrapper |
 | `docs/termux-build.md` | Termux build notes, toolchain decision and configuration-cache measurements |
 | `test/installer-test.sh` | the installer test runner; cases live in `test/installer/` |
@@ -21,6 +22,7 @@ upstream binary, on the Android kernel, with no proot and no ptrace.
 | `test/repo-test.sh` | apt indexes, checksums, signatures and the setup package |
 | `test/tur-test.sh` | runs the TUR recipe's install step against a throwaway prefix |
 | `.github/workflows/test.yml` | syntax, ShellCheck, tests and packaging on x86_64 and arm64 |
+| `.github/workflows/emulator-e2e.yml` | post-merge x86_64 emulator job: Termux, the package and the app tests |
 | `.github/workflows/apt-repo.yml` | builds both architectures, signs and publishes the APT repository |
 | `docs/investigation.md` | the investigation: why the released binary cannot run as-is, every step, and what was actually observed on an unrooted device |
 | `fdroiddata/` | ready-to-submit F-Droid metadata and the merge-request text |
@@ -39,6 +41,33 @@ The script finds `$HOME/android-sdk`, exports `ANDROID_HOME`, and uses Termux's
 `aapt2` because the Maven one is glibc. See
 [docs/termux-build.md](docs/termux-build.md) for the direct-Gradle path, the
 version catalog, and the toolchain rationale.
+
+### Emulator coverage
+
+`.github/workflows/emulator-e2e.yml` runs on every push to `main` and on demand.
+It boots a fresh API 35 `google_apis` `x86_64` AVD, installs the debuggable
+Termux universal APK, enables `allow-external-apps=true` through `run-as`,
+installs the x86_64 `freebuff-native` package (the release `.deb`, with the APT
+installer as a fallback), installs the app and androidTest APKs, and runs
+`test/android-e2e.py --screenshots`.
+
+This is **x86_64 compatibility coverage, not the verified target.** A missing
+emulator, a missing Termux, a failed native install or a `test/android-e2e.py`
+exit 77 fails the job; a skip is never green. The 540 MB native install has a
+bounded budget: if it exceeds that budget, the UI, consent and denied-permission
+tests still run, and `native-check.txt` records the native check as an explicit
+follow-up rather than a pass. Logs, instrumentation output and screenshots are
+uploaded on failure.
+
+The release gate remains the self-hosted exact-device **aarch64** run on the
+Blackview XPLORE 2 (Dimensity 8300, DokeOS). An SDK emulator cannot reproduce
+arm64, the vendor runtime or OEM power behaviour, so this job extends coverage;
+it does not replace that device.
+
+```bash
+bash ci/emulator-e2e.sh --preflight   # fail-closed check for an attached emulator
+bash ci/emulator-e2e.sh               # full run against an already-booted AVD
+```
 
 ## Why it does not just run
 
@@ -119,8 +148,15 @@ bash test/package-test.sh     # .deb: builds and inspects a package, no root
 bash test/repo-test.sh        # apt repo: indexes, Release, signing, freebuff-repo
 bash test/tur-test.sh         # TUR recipe: its install step, in a throwaway prefix
 bash test/android-test.sh     # Android: manifest, resources, F-Droid metadata
+python3 test/test_emulator_e2e.py  # emulator wrapper: fake adb, exit-77 handling
 python3 test/android-e2e.py   # Android, on a device: installs and drives the app
+bash ci/emulator-e2e.sh --preflight  # hosted-emulator preflight, no AVD booted
 ```
+
+`test/android-e2e.py` exits 77 when it has no device, no Termux or no APKs. That
+is convenient by hand and wrong in post-merge CI: `ci/emulator-e2e.sh` passes
+`--require-device` and still treats a 77 as a failure, and the deviceless tests
+exercise both halves of that rule.
 
 Each installer test builds a throwaway prefix under `mktemp -d` with a stub
 glibc loader that asserts the binary it was handed exists, so the suite
@@ -171,7 +207,9 @@ run. The wrapper also exports `CODEBUFF_RG_PATH`, which covers code search.
   ~3.1 s through `proot-distro login debian` (≈4.8×). Launch is still dominated
   by mapping the 136 MB binary. See section 6 of [docs/investigation.md](docs/investigation.md).
 - `aarch64` is the verified target. The `x86_64` path is implemented and tested in
-  CI, but has not been run on a device.
+  CI, and the post-merge emulator job exercises the setup app and its native
+  check when the 540 MB install fits the job budget; it is compatibility
+  coverage, not the release gate.
 
 ## License
 
