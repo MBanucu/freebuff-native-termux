@@ -19,9 +19,18 @@ key, and `.github/workflows/apt-repo.yml` publishes it on tags. The `github-page
 environment accepts the `main` branch and `v*` tags; a tag deploy is rejected
 otherwise, which is what happened on the first `v1.1.0` run.
 
+The tag is the version: `v1.2.0` publishes `freebuff-native_1.2.0_<arch>.deb` and
+`freebuff-repo_1.2.0_all.deb`. The job compares what it built with the index that
+is already live and refuses to redeploy a version whose contents changed — apt
+does not reinstall a version it already has, so a rebuilt file under a published
+number would reach no one. Fixing a published package therefore means a new tag,
+never a rebuilt `.deb`.
+
 The signing key lives only in the `APT_GPG_PRIVATE_KEY` secret. Losing it means a
 new key and a new `freebuff-repo` release, so it should be backed up somewhere
-the maintainer controls.
+the maintainer controls. The job refuses to deploy when the secret's fingerprint
+is not the key in `packaging/termux/repo/freebuff.gpg` — that pair drifting would
+break every client's `apt update` while the deploy still reported success.
 
 ## TUR
 

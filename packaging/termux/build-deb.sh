@@ -12,7 +12,8 @@
 #
 # Environment:
 #   FREEBUFF_PKG_ARCH    aarch64 or x86_64 (default: dpkg --print-architecture)
-#   FREEBUFF_PKG_VERSION package version (default: 1.1.0)
+#   FREEBUFF_PKG_VERSION package version (default: 1.1.1, for a local build;
+#                        .github/workflows/apt-repo.yml always passes the tag)
 #   FREEBUFF_PKG_PREFIX  install prefix (default: /data/data/com.termux/files/usr)
 #   FREEBUFF_PKG_CC      compiler used for the shim (default: clang)
 #
@@ -28,7 +29,7 @@ set -euo pipefail
 HERE=$(cd "${BASH_SOURCE[0]%/*}/../.." && pwd)
 TEMPLATES=$HERE/packaging/termux/templates
 OUTDIR=${1:-$HERE/dist}
-VERSION=${FREEBUFF_PKG_VERSION:-1.1.0}
+VERSION=${FREEBUFF_PKG_VERSION:-1.1.1}
 PREFIX=${FREEBUFF_PKG_PREFIX:-/data/data/com.termux/files/usr}
 CC=${FREEBUFF_PKG_CC:-clang}
 

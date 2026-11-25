@@ -7,7 +7,8 @@
 #
 # Environment:
 #   FREEBUFF_REPO_URL      repository root URL (default: GitHub Pages)
-#   FREEBUFF_REPO_VERSION  package version (default: 1.0.0)
+#   FREEBUFF_REPO_VERSION  package version (default: 1.0.0; the apt-repo
+#                          workflow passes the released tag)
 #   FREEBUFF_PKG_PREFIX    install prefix (default: Termux)
 #
 # The public key must already be at packaging/termux/repo/freebuff.gpg; CI

@@ -8,6 +8,13 @@ name: apt-repo
 
 on:
   workflow_dispatch:
+    inputs:
+      # A dispatch has no tag to read a version from, so it names one; that
+      # version is published exactly like a tag's.
+      version:
+        description: 'Package version to publish, for example 1.2.0'
+        required: true
+        type: string
   push:
     tags:
       - 'v*'
@@ -25,11 +32,38 @@ jobs:
   publish:
     name: publish repository
     runs-on: ubuntu-24.04
+    env:
+      # One value for the source line the freebuff-repo package ships and for
+      # the index this job checks before deploying.
+      FREEBUFF_REPO_URL: https://mbanucu.github.io/freebuff-native-termux/
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+
+      # The tag is the version. Without this the scripts fell back to their
+      # literals (1.1.1 and 1.0.0), so every release republished 1.1.1 and
+      # `pkg upgrade` had nothing newer to install.
+      - name: The package version comes from the tag
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$INPUT_VERSION"
+          fi
+          if ! [[ $version =~ ^[0-9][A-Za-z0-9.+:~-]*$ ]]; then
+            echo "::error::'$version' is not a Debian package version"
+            exit 1
+          fi
+          echo "FREEBUFF_PKG_VERSION=$version" >>"$GITHUB_ENV"
+          # The repository package ships the source line and the signing key, so
+          # it takes the same number: one tag is one version for both.
+          echo "FREEBUFF_REPO_VERSION=$version" >>"$GITHUB_ENV"
+          echo "publishing $version" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Build tools
         run: |
@@ -46,6 +80,37 @@ jobs:
           FREEBUFF_PKG_ARCH=x86_64 bash packaging/termux/build-deb.sh dist
           bash packaging/termux/repo/build-repo-package.sh dist
 
+      # Pages can replace a published .deb, and apt will not reinstall a version
+      # it already has: a changed file under a published number would reach no
+      # one. An identical re-run is allowed, and a first publish has no index.
+      - name: A published version is not rebuilt
+        run: |
+          set -euo pipefail
+          base="${FREEBUFF_REPO_URL%/}"
+          for arch in aarch64 x86_64; do
+            deb="dist/freebuff-native_${FREEBUFF_PKG_VERSION}_${arch}.deb"
+            [ -f "$deb" ] || { echo "::error::$deb was not built"; exit 1; }
+            sum=$(sha256sum "$deb" | cut -d' ' -f1)
+            live=$(curl -fsSL --max-time 20 \
+              "$base/dists/stable/main/binary-$arch/Packages" || true)
+            published=$(printf '%s\n' "$live" | awk -v want="Version: $FREEBUFF_PKG_VERSION" '
+              /^$/ { if (found) exit; next }
+              $0 == want { found = 1 }
+              found && /^SHA256: / { print $2 }
+            ')
+            if [ -z "$published" ]; then
+              echo "$arch: $FREEBUFF_PKG_VERSION is not published yet"
+            elif [ "$published" = "$sum" ]; then
+              echo "$arch: $FREEBUFF_PKG_VERSION is already published, unchanged"
+            else
+              echo "::error::$arch $FREEBUFF_PKG_VERSION is already published with different contents"
+              echo "published $published"
+              echo "built     $sum"
+              echo "A published version cannot be replaced; bump the tag."
+              exit 1
+            fi
+          done
+
       - name: Sign and index
         env:
           APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
@@ -59,6 +124,23 @@ jobs:
           key=$(gpg --batch --list-secret-keys --with-colons |
                 awk -F: '/^sec:/ {print $5; exit}')
           test -n "$key"
+
+          # The key that signs and the key freebuff-repo installs as trusted must
+          # be the same one. Otherwise the deploy succeeds and every client fails
+          # with NO_PUBKEY, and reinstalling the package does not help because it
+          # ships the committed key.
+          fingerprint=$(gpg --batch --with-colons --list-secret-keys "$key" |
+                        awk -F: '/^fpr:/ {print $10; exit}')
+          shipped=packaging/termux/repo/freebuff.gpg
+          if ! gpg --batch --with-colons --show-keys "$shipped" 2>/dev/null |
+               awk -F: '/^fpr:/ {print $10}' | grep -qx "$fingerprint"; then
+            echo "::error::APT_GPG_PRIVATE_KEY ($fingerprint) is not the key in $shipped"
+            echo "Every signature would fail to verify on a client. Re-export the"
+            echo "signing key over $shipped, or restore the matching secret."
+            exit 1
+          fi
+          echo "signing with $fingerprint, the key $shipped ships"
+
           bash packaging/termux/repo/build-repo.sh dist public "$key"
           cp dist/freebuff-repo_*_all.deb public/freebuff-repo_all.deb
           cp packaging/termux/repo/index.html public/index.html
